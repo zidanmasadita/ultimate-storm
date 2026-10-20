@@ -21,20 +21,34 @@ window.addEventListener('unhandledrejection', (e) => {
 
 // ============================================================ Renderer
 const app = document.getElementById('app')!;
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+// Three r163+ wajib WebGL2 — cek dulu supaya kegagalannya berupa pesan
+// yang terbaca, bukan layar hitam.
+if (!document.createElement('canvas').getContext('webgl2')) {
+  showFatal('Browser ini tidak mendukung WebGL2, jadi adegan 3D tidak bisa digambar. Coba browser versi terbaru (Chrome/Edge/Firefox/Safari).');
+  throw new Error('WebGL2 tidak tersedia');
+}
+
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice ? 1.75 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 app.appendChild(renderer.domElement);
+// Konteks WebGL hilang (GPU kehabisan memori) harus bersuara, bukan diam.
+renderer.domElement.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  showFatal('Konteks WebGL hilang — GPU kehabisan memori atau driver bermasalah. Coba tutup aplikasi lain lalu refresh.');
+});
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 700);
 camera.position.set(0, 6, 14);
 
-const arena = buildArena(scene);
+const arena = buildArena(scene, { shadowMapSize: isTouchDevice ? 1024 : 2048 });
 const effects = new Effects(scene);
 const input = new Input();
 

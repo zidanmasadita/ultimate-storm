@@ -91,36 +91,29 @@ function windowsTexture(): THREE.Texture {
 }
 
 function skyDome(): THREE.Mesh {
+  // Gradasi langit senja via tekstur canvas — TANPA ShaderMaterial custom,
+  // supaya tidak ada risiko gagal compile shader di driver GPU tertentu.
   const geo = new THREE.SphereGeometry(320, 24, 16);
-  const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    uniforms: {
-      top: { value: new THREE.Color(0x131c3f) },
-      mid: { value: new THREE.Color(0x4a2a6e) },
-      bot: { value: new THREE.Color(0xff8c42) },
-    },
-    vertexShader: `
-      varying vec3 vPos;
-      void main() {
-        vPos = position;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }`,
-    fragmentShader: `
-      uniform vec3 top; uniform vec3 mid; uniform vec3 bot;
-      varying vec3 vPos;
-      void main() {
-        float h = normalize(vPos).y;
-        vec3 col = h > 0.12
-          ? mix(mid, top, smoothstep(0.12, 0.65, h))
-          : mix(bot, mid, smoothstep(-0.08, 0.12, h));
-        gl_FragColor = vec4(col, 1.0);
-      }`,
-  });
+  const c = document.createElement('canvas');
+  c.width = 2;
+  c.height = 512;
+  const g = c.getContext('2d')!;
+  const grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0.0, '#131c3f');
+  grad.addColorStop(0.3, '#2f2158');
+  grad.addColorStop(0.44, '#4a2a6e');
+  grad.addColorStop(0.54, '#ff8c42');
+  grad.addColorStop(1.0, '#d96f35');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 2, 512);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false });
   return new THREE.Mesh(geo, mat);
 }
 
-export function buildArena(scene: THREE.Scene): ArenaInfo {
+export function buildArena(scene: THREE.Scene, opts?: { shadowMapSize?: number }): ArenaInfo {
+  const shadowSize = opts?.shadowMapSize ?? 2048;
   const ringRadius = 14;
   const ringTopY = 1.2;
 
@@ -133,7 +126,7 @@ export function buildArena(scene: THREE.Scene): ArenaInfo {
   const sun = new THREE.DirectionalLight(0xffd9a3, 1.9);
   sun.position.set(20, 30, 14);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(shadowSize, shadowSize);
   sun.shadow.camera.left = -22;
   sun.shadow.camera.right = 22;
   sun.shadow.camera.top = 22;
