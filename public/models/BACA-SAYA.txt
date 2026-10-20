@@ -1,0 +1,8 @@
+Taruh file model karakter hasil generate di folder ini dengan nama persis:
+
+  player1.glb  -> karakter pemain 1
+  player2.glb  -> karakter pemain 2 (musuh)
+
+Kalau file belum ada, game memakai karakter placeholder (kapsul)
+supaya environment tetap bisa dicoba. Ukuran model otomatis
+dinormalisasi ke tinggi 1,8 m di dalam game.

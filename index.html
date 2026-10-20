@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ring Fighter — Arena 3D</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e1a; font-family: 'Segoe UI', system-ui, sans-serif; }
+      #app { position: fixed; inset: 0; }
+      canvas { display: block; }
+
+      /* ===== HUD ===== */
+      #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+      .side { position: absolute; top: 18px; width: min(38vw, 430px); }
+      .side.left { left: 22px; }
+      .side.right { right: 22px; text-align: right; }
+      .pname { color: #fff; font-weight: 800; font-style: italic; letter-spacing: 1px; font-size: 15px; text-shadow: 0 2px 6px rgba(0,0,0,.7); margin-bottom: 4px; }
+      .bar { height: 14px; background: rgba(0,0,0,.55); border: 2px solid rgba(255,255,255,.85); transform: skewX(-18deg); overflow: hidden; }
+      .side.right .bar { transform: skewX(18deg); }
+      .bar > div { height: 100%; width: 100%; transition: width .25s ease; }
+      .hp > div { background: linear-gradient(180deg, #ffe259, #ffa751); }
+      .side.right .hp > div { margin-left: auto; }
+      .chakra { height: 8px; margin-top: 4px; }
+      .chakra > div { background: linear-gradient(180deg, #56ccf2, #2f80ed); }
+      .side.right .chakra > div { margin-left: auto; }
+      #vs { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); color: #fff; font-weight: 900; font-style: italic; font-size: 22px; text-shadow: 0 2px 8px rgba(0,0,0,.8); }
+
+      #banner { position: absolute; top: 34%; left: 50%; transform: translate(-50%,-50%) scale(1); color: #ffd34d; font-size: 64px; font-weight: 900; font-style: italic; letter-spacing: 2px; text-shadow: 0 4px 0 #b3541e, 0 10px 30px rgba(0,0,0,.8); opacity: 0; transition: opacity .15s; }
+      #banner.show { opacity: 1; }
+
+      #hints { position: absolute; left: 22px; bottom: 18px; color: rgba(255,255,255,.85); font-size: 12.5px; line-height: 1.7; text-shadow: 0 1px 4px rgba(0,0,0,.9); }
+      #hints b { color: #ffd34d; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.35); border-radius: 4px; padding: 0 6px; margin-right: 4px; font-weight: 700; }
+
+      #btn-settings { position: absolute; right: 22px; bottom: 18px; pointer-events: auto; background: rgba(10,14,28,.8); color: #fff; border: 1px solid rgba(255,255,255,.4); border-radius: 8px; padding: 9px 14px; font-weight: 700; cursor: pointer; }
+      #btn-settings:hover { background: rgba(40,50,90,.9); }
+
+      /* ===== Panel pengaturan ===== */
+      #settings { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center; background: rgba(4,6,14,.66); }
+      #settings.open { display: flex; }
+      .panel { background: #12172b; color: #eef1ff; border: 1px solid rgba(255,255,255,.18); border-radius: 14px; padding: 22px 24px; width: min(92vw, 430px); box-shadow: 0 24px 60px rgba(0,0,0,.6); }
+      .panel h2 { margin: 0 0 4px; font-size: 19px; }
+      .panel p { margin: 0 0 14px; color: #9aa5c7; font-size: 13px; line-height: 1.5; }
+      .row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-top: 1px solid rgba(255,255,255,.08); }
+      .row .act { font-weight: 600; font-size: 14px; }
+      .row .key { display: flex; align-items: center; gap: 8px; }
+      .kbd { background: #1e2748; border: 1px solid rgba(255,255,255,.3); border-bottom-width: 3px; border-radius: 6px; padding: 4px 10px; font-weight: 700; font-size: 13px; min-width: 62px; text-align: center; }
+      .kbd.listening { background: #7a4b12; border-color: #ffd34d; color: #ffd34d; }
+      .mini { background: transparent; color: #9fc1ff; border: 1px solid rgba(159,193,255,.5); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12.5px; }
+      .mini:hover { background: rgba(159,193,255,.12); }
+      .panel .foot { display: flex; justify-content: space-between; margin-top: 18px; }
+      .foot button { border-radius: 8px; padding: 9px 16px; font-weight: 700; cursor: pointer; border: 1px solid rgba(255,255,255,.3); background: #232c52; color: #fff; }
+      .foot button.primary { background: #2f80ed; border-color: #2f80ed; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud">
+      <div class="side left">
+        <div class="pname">PLAYER 1</div>
+        <div class="bar hp"><div id="hp1"></div></div>
+        <div class="bar chakra"><div id="ck1"></div></div>
+      </div>
+      <div id="vs">VS</div>
+      <div class="side right">
+        <div class="pname">PLAYER 2</div>
+        <div class="bar hp"><div id="hp2"></div></div>
+        <div class="bar chakra"><div id="ck2"></div></div>
+      </div>
+      <div id="banner"></div>
+      <div id="hints"></div>
+      <button id="btn-settings">Pengaturan Tombol</button>
+    </div>
+
+    <div id="settings">
+      <div class="panel">
+        <h2>Pengaturan Tombol</h2>
+        <p>Gerak selalu memakai <b>W A S D</b>. Tombol aksi di bawah ini bisa diganti: klik <b>Ubah</b>, lalu tekan tombol barunya. Tersimpan otomatis di browser.</p>
+        <div id="bind-rows"></div>
+        <div class="foot">
+          <button id="btn-reset-binds">Reset Default</button>
+          <button id="btn-close-settings" class="primary">Tutup</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
