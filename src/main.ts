@@ -23,6 +23,12 @@ window.addEventListener('unhandledrejection', (e) => {
 const app = document.getElementById('app')!;
 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
+// Mode ringan: bayangan mati, tanpa tone mapping, pixelRatio 1.
+// Aktif lewat ?ringan=1 atau otomatis bila renderer terbukti tidak menggambar.
+const LIGHT_MODE =
+  new URLSearchParams(location.search).has('ringan') ||
+  sessionStorage.getItem('us-ringan') === '1';
+
 // Three r163+ wajib WebGL2 — cek dulu supaya kegagalannya berupa pesan
 // yang terbaca, bukan layar hitam.
 if (!document.createElement('canvas').getContext('webgl2')) {
@@ -30,12 +36,12 @@ if (!document.createElement('canvas').getContext('webgl2')) {
   throw new Error('WebGL2 tidak tersedia');
 }
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice ? 1.75 : 2));
+const renderer = new THREE.WebGLRenderer({ antialias: !LIGHT_MODE });
+renderer.setPixelRatio(LIGHT_MODE ? 1 : Math.min(window.devicePixelRatio, isTouchDevice ? 1.75 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !LIGHT_MODE;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMapping = LIGHT_MODE ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 app.appendChild(renderer.domElement);
 // Konteks WebGL hilang (GPU kehabisan memori) harus bersuara, bukan diam.
@@ -45,6 +51,9 @@ renderer.domElement.addEventListener('webglcontextlost', (e) => {
 });
 
 const scene = new THREE.Scene();
+// Latar paksa: bila semua mesh gagal digambar pun, canvas menunjukkan
+// warna ini — canvas yang tetap hitam berarti pipeline GL tidak menggambar.
+scene.background = new THREE.Color(0x2a2138);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 700);
 camera.position.set(0, 6, 14);
 
@@ -63,8 +72,10 @@ const enemy = new Fighter(placeholderModel(0xed4b2f));
 player.reset(SPAWN_1, Math.PI / 2);
 enemy.reset(SPAWN_2, -Math.PI / 2);
 scene.add(player.group, enemy.group);
-loadFighterModel('models/player1.glb', 0x2f80ed).then((m) => player.setModel(m));
-loadFighterModel('models/player2.glb', 0xed4b2f).then((m) => enemy.setModel(m));
+let playerModelLoaded = false;
+let enemyModelLoaded = false;
+loadFighterModel('models/player1.glb', 0x2f80ed).then((m) => { player.setModel(m); playerModelLoaded = true; });
+loadFighterModel('models/player2.glb', 0xed4b2f).then((m) => { enemy.setModel(m); enemyModelLoaded = true; });
 
 // ============================================================ HUD & panel
 const $ = (id: string) => document.getElementById(id)!;
@@ -452,6 +463,17 @@ let perfTime = 0;
 const clock = new THREE.Clock();
 showBanner('FIGHT!', 1.1);
 
+// ============================================================ Panel diagnostik
+// Menampilkan keadaan renderer yang sebenarnya di perangkat pengguna.
+const debugEl = document.createElement('div');
+debugEl.style.cssText =
+  'position:fixed;left:8px;bottom:8px;z-index:40;background:rgba(0,0,0,.72);color:#9fe870;' +
+  'font:11px/1.5 ui-monospace,monospace;padding:6px 9px;border-radius:6px;white-space:pre;pointer-events:none';
+document.body.appendChild(debugEl);
+let frameCount = 0;
+let lastCalls = -1;
+let lastTris = 0;
+
 function tick(): void {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -478,8 +500,33 @@ function tick(): void {
   input.endFrame();
   renderer.render(scene, camera);
   (window as unknown as { __gameBooted?: boolean }).__gameBooted = true;
+
+  frameCount++;
+  lastCalls = renderer.info.render.calls;
+  lastTris = renderer.info.render.triangles;
+  if (frameCount % 30 === 0) {
+    const gl = renderer.getContext();
+    debugEl.textContent =
+      `draw ${lastCalls} · tri ${(lastTris / 1000).toFixed(0)}k · frame ${frameCount}\n` +
+      `model P1 ${playerModelLoaded ? 'GLB' : '...'} · P2 ${enemyModelLoaded ? 'GLB' : '...'}\n` +
+      `ctx lost: ${gl.isContextLost()} · canvas ${renderer.domElement.width}x${renderer.domElement.height}\n` +
+      `mode: ${LIGHT_MODE ? 'RINGAN' : 'normal'}`;
+  }
 }
 tick();
+
+// Penyelamat otomatis: loop jalan tapi renderer menggambar NOL objek →
+// muat ulang sekali dalam mode ringan; bila tetap nol, bersuara.
+setTimeout(() => {
+  if (frameCount > 30 && lastCalls === 0) {
+    if (!LIGHT_MODE) {
+      sessionStorage.setItem('us-ringan', '1');
+      location.reload();
+    } else {
+      showFatal('Renderer berjalan tapi tidak menggambar satu objek pun di perangkat ini, bahkan dalam mode ringan.');
+    }
+  }
+}, 5000);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
