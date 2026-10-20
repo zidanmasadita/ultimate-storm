@@ -1,8 +1,23 @@
 import * as THREE from 'three';
 import { buildArena } from './game/arena';
-import { Fighter, loadFighterModel, turnToward } from './game/character';
+import { Fighter, loadFighterModel, placeholderModel, turnToward } from './game/character';
 import { Effects } from './game/effects';
 import { ACTION_LABELS, ActionId, DEFAULT_BINDS, Input, keyLabel, saveBinds } from './game/input';
+
+// ============================================================ Jaring pengaman error
+// Kegagalan apa pun ditampilkan di layar (kotak merah), bukan layar hitam diam.
+const fatalEl = document.getElementById('fatal');
+function showFatal(msg: string): void {
+  if (fatalEl) {
+    fatalEl.style.display = 'block';
+    fatalEl.textContent = 'Error: ' + msg;
+  }
+}
+window.addEventListener('error', (e) => showFatal(e.message || 'kesalahan tidak dikenal'));
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason as Error | string;
+  showFatal(typeof r === 'string' ? r : r?.message || 'promise gagal');
+});
 
 // ============================================================ Renderer
 const app = document.getElementById('app')!;
@@ -27,11 +42,15 @@ const input = new Input();
 const SPAWN_1 = new THREE.Vector3(-6, arena.ringTopY, 0);
 const SPAWN_2 = new THREE.Vector3(6, arena.ringTopY, 0);
 
-const player = new Fighter(await loadFighterModel('models/player1.glb', 0x2f80ed));
-const enemy = new Fighter(await loadFighterModel('models/player2.glb', 0xed4b2f));
+// Game langsung mulai dengan placeholder; GLB asli ditukar masuk begitu
+// selesai dimuat (kegagalan/lambat memuat model TIDAK boleh menghitamkan layar).
+const player = new Fighter(placeholderModel(0x2f80ed));
+const enemy = new Fighter(placeholderModel(0xed4b2f));
 player.reset(SPAWN_1, Math.PI / 2);
 enemy.reset(SPAWN_2, -Math.PI / 2);
 scene.add(player.group, enemy.group);
+loadFighterModel('models/player1.glb', 0x2f80ed).then((m) => player.setModel(m));
+loadFighterModel('models/player2.glb', 0xed4b2f).then((m) => enemy.setModel(m));
 
 // ============================================================ HUD & panel
 const $ = (id: string) => document.getElementById(id)!;
@@ -444,6 +463,7 @@ function tick(): void {
 
   input.endFrame();
   renderer.render(scene, camera);
+  (window as unknown as { __gameBooted?: boolean }).__gameBooted = true;
 }
 tick();
 

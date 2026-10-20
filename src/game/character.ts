@@ -9,7 +9,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export const FIGHTER_HEIGHT = 1.8;
 
-function placeholderModel(color: number): THREE.Object3D {
+/** Model kapsul placeholder (dipakai sebelum GLB selesai dimuat / bila gagal). */
+export function placeholderModel(color: number): THREE.Object3D {
   const grp = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x22242e, roughness: 0.7 });
@@ -98,8 +99,15 @@ export class Fighter {
   private materials: THREE.MeshStandardMaterial[] = [];
 
   constructor(model: THREE.Object3D) {
-    this.inner.add(model);
     this.group.add(this.inner);
+    this.setModel(model);
+  }
+
+  /** Ganti model di dalam grup (mis. placeholder -> GLB asli saat selesai dimuat). */
+  setModel(model: THREE.Object3D): void {
+    this.inner.clear();
+    this.inner.add(model);
+    this.materials = [];
     this.inner.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (mesh.isMesh) {

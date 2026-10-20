@@ -78,10 +78,26 @@
       .panel .foot { display: flex; justify-content: space-between; margin-top: 18px; }
       .foot button { border-radius: 8px; padding: 9px 16px; font-weight: 700; cursor: pointer; border: 1px solid rgba(255,255,255,.3); background: #232c52; color: #fff; }
       .foot button.primary { background: #2f80ed; border-color: #2f80ed; }
+
+      /* Kotak error (jaring pengaman — game tidak boleh gagal diam-diam) */
+      #fatal { display: none; position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 50;
+        max-width: min(92vw, 640px); background: #5b1220; color: #ffd9de; border: 1px solid #ff5f76;
+        border-radius: 10px; padding: 12px 16px; font: 13px/1.55 ui-monospace, monospace; white-space: pre-wrap; }
     </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="fatal"></div>
+    <script>
+      // Watchdog: kalau modul game tidak mulai dalam 7 detik, tampilkan sebabnya.
+      setTimeout(function () {
+        if (!window.__gameBooted) {
+          var el = document.getElementById('fatal');
+          el.style.display = 'block';
+          el.textContent = 'Game tidak mulai. Kemungkinan: dibuka langsung dari file (pakai npm run dev), WebGL tidak tersedia di browser ini, atau file model gagal dimuat.';
+        }
+      }, 7000);
+    </script>
 
     <div id="hud">
       <div class="side left">
