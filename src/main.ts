@@ -129,6 +129,60 @@ interface Projectile {
 const projectiles: Projectile[] = [];
 const projGeo = new THREE.SphereGeometry(0.22, 16, 12);
 
+// ============================================================ Kontrol sentuh (mobile)
+// Tampilkan UI sentuh begitu ada sentuhan pertama terdeteksi.
+window.addEventListener('touchstart', () => document.body.classList.add('touch-on'), { once: true });
+
+const stickBase = $('stick-base');
+const stickKnob = $('stick-knob');
+const STICK_RADIUS = 44;
+let stickPointerId: number | null = null;
+
+function stickMove(e: PointerEvent): void {
+  const rect = stickBase.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  let dx = e.clientX - cx;
+  let dy = e.clientY - cy;
+  const len = Math.hypot(dx, dy);
+  if (len > STICK_RADIUS) {
+    dx *= STICK_RADIUS / len;
+    dy *= STICK_RADIUS / len;
+  }
+  stickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  input.touchAxis = { x: dx / STICK_RADIUS, z: dy / STICK_RADIUS };
+}
+
+function stickEnd(): void {
+  stickPointerId = null;
+  stickKnob.style.transform = 'translate(-50%,-50%)';
+  input.touchAxis = null;
+}
+
+stickBase.addEventListener('pointerdown', (e) => {
+  stickPointerId = e.pointerId;
+  stickBase.setPointerCapture(e.pointerId);
+  stickMove(e);
+  e.preventDefault();
+});
+stickBase.addEventListener('pointermove', (e) => {
+  if (e.pointerId === stickPointerId) stickMove(e);
+});
+stickBase.addEventListener('pointerup', stickEnd);
+stickBase.addEventListener('pointercancel', stickEnd);
+
+function bindTouchButton(id: string, action: ActionId): void {
+  const el = $(id);
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    input.pressAction(action);
+  });
+}
+bindTouchButton('btn-atk', 'attack');
+bindTouchButton('btn-skill', 'skill');
+bindTouchButton('btn-dash', 'dash');
+bindTouchButton('btn-jump', 'jump');
+
 function castSkill(caster: Fighter, target: Fighter): void {
   if (caster.skillCooldown > 0 || caster.chakra < 25) return;
   caster.chakra -= 25;
@@ -299,6 +353,8 @@ function updatePlayer(dt: number): void {
     .addScaledVector(camRight, -axis.x);
   const moving = wish.lengthSq() > 0.001;
   if (moving) wish.normalize();
+  // Magnitud analog: dorongan kecil pada joystick = jalan pelan (keyboard selalu 1)
+  const axisMag = Math.min(1, Math.hypot(axis.x, axis.z));
 
   // Dash
   if (input.consume('dash') && player.dashCooldown <= 0) {
@@ -309,7 +365,7 @@ function updatePlayer(dt: number): void {
     effects.burst(player.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), 0x9fc1ff, 16, 2.5, 0.35, 0.12);
   }
 
-  const speed = player.dashTimer > 0 ? 17 : WALK_SPEED;
+  const speed = player.dashTimer > 0 ? 17 : WALK_SPEED * axisMag;
   const desired = moving ? wish.clone().multiplyScalar(speed) : new THREE.Vector3();
   if (player.dashTimer <= 0) steer(player, desired, dt);
 

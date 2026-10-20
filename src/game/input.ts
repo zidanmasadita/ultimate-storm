@@ -64,6 +64,11 @@ export class Input {
   private pressedEdge = new Set<string>();
   private captureCb: ((code: string) => void) | null = null;
 
+  /** Sumbu analog dari joystick sentuh (null = tidak aktif). */
+  touchAxis: { x: number; z: number } | null = null;
+  /** Aksi yang ditekan lewat tombol sentuh pada frame ini. */
+  private touchPressed = new Set<ActionId>();
+
   constructor() {
     this.binds = loadBinds();
     window.addEventListener('keydown', (e) => {
@@ -95,8 +100,11 @@ export class Input {
     this.captureCb = (code) => cb(code === 'Escape' ? null : code);
   }
 
-  /** Sumbu gerak WASD: x = kanan(+)/kiri(-), z = mundur(+)/maju(-). */
+  /** Sumbu gerak: WASD, atau joystick sentuh bila aktif (analog, ada magnitud). */
   moveAxis(): { x: number; z: number } {
+    if (this.touchAxis && (Math.abs(this.touchAxis.x) > 0.12 || Math.abs(this.touchAxis.z) > 0.12)) {
+      return this.touchAxis;
+    }
     let x = 0;
     let z = 0;
     if (this.down.has('KeyW')) z -= 1;
@@ -106,16 +114,22 @@ export class Input {
     return { x, z };
   }
 
+  /** Dipanggil tombol sentuh saat ditekan. */
+  pressAction(action: ActionId): void {
+    this.touchPressed.add(action);
+  }
+
   isDown(action: ActionId): boolean {
     return this.down.has(this.binds[action]);
   }
 
-  /** True sekali saat tombol aksi baru ditekan (edge), lalu ter-reset tiap frame. */
+  /** True sekali saat tombol aksi baru ditekan (keyboard ATAU sentuh), ter-reset tiap frame. */
   consume(action: ActionId): boolean {
-    return this.pressedEdge.has(this.binds[action]);
+    return this.pressedEdge.has(this.binds[action]) || this.touchPressed.has(action);
   }
 
   endFrame(): void {
     this.pressedEdge.clear();
+    this.touchPressed.clear();
   }
 }
