@@ -79,6 +79,23 @@
       .foot button { border-radius: 8px; padding: 9px 16px; font-weight: 700; cursor: pointer; border: 1px solid rgba(255,255,255,.3); background: #232c52; color: #fff; }
       .foot button.primary { background: #2f80ed; border-color: #2f80ed; }
 
+      /* ===== Wajib horizontal di mobile ===== */
+      #rotate-overlay { display: none; }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #rotate-overlay { display: flex; position: fixed; inset: 0; z-index: 80;
+          background: rgba(5, 7, 16, .96); flex-direction: column; align-items: center; justify-content: center;
+          gap: 18px; text-align: center; padding: 24px; }
+      }
+      #rotate-overlay .phone { width: 54px; height: 88px; border: 3px solid #ffd76a; border-radius: 9px;
+        animation: rotphone 1.8s ease-in-out infinite; }
+      #rotate-overlay .phone::after { content: ''; display: block; width: 16px; height: 3px; border-radius: 2px;
+        background: #ffd76a; margin: 6px auto 0; }
+      @keyframes rotphone { 0%, 25% { transform: rotate(0deg); } 60%, 100% { transform: rotate(90deg); } }
+      #rotate-overlay h2 { margin: 0; font-size: 20px; font-style: italic; }
+      #rotate-overlay p { margin: 0; color: #b9c3e6; font-size: 14px; line-height: 1.55; max-width: 300px; }
+      #btn-fullscreen { pointer-events: auto; background: #2f80ed; color: #fff; border: 0; border-radius: 10px;
+        padding: 12px 22px; font-weight: 800; font-size: 15px; cursor: pointer; }
+
       /* Kotak error (jaring pengaman — game tidak boleh gagal diam-diam) */
       #fatal { display: none; position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 50;
         max-width: min(92vw, 640px); background: #5b1220; color: #ffd9de; border: 1px solid #ff5f76;
@@ -88,7 +105,7 @@
   <body>
     <div id="app"></div>
     <div id="fatal"></div>
-    <div id="buildtag" style="position:fixed;right:8px;top:44px;z-index:60;color:#ffd76a;font:11px ui-monospace,monospace;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px">build diag-3</div>
+    <div id="buildtag" style="position:fixed;right:8px;top:44px;z-index:60;color:#ffd76a;font:11px ui-monospace,monospace;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px">build diag-4</div>
     <div id="diagpanel" style="position:fixed;left:8px;top:120px;z-index:60;color:#9fe870;font:11px/1.55 ui-monospace,monospace;background:rgba(0,0,0,.78);padding:7px 9px;border-radius:6px;white-space:pre">memeriksa...</div>
     <script>
       // Panel diagnostik INDEPENDEN (bukan bagian modul game): tetap bersuara
@@ -111,7 +128,7 @@
         setInterval(function () {
           var canvas = document.querySelector('#app canvas');
           var lines = [];
-          lines.push('build diag-3 · panel mandiri');
+          lines.push('build diag-4 · panel mandiri');
           lines.push('canvas: ' + (canvas ? 'ada ' + canvas.width + 'x' + canvas.height : 'TIDAK ADA'));
           lines.push('game booted: ' + (window.__gameBooted ? 'YA' : 'belum'));
           lines.push(glInfo);
@@ -122,12 +139,18 @@
           if (!window.__gameBooted) {
             var el = document.getElementById('fatal');
             el.style.display = 'block';
-            el.textContent = 'Game tidak mulai dalam 7 detik (build diag-3). Modul JS gagal jalan di browser ini.';
+            el.textContent = 'Game tidak mulai dalam 7 detik (build diag-4). Modul JS gagal jalan di browser ini.';
           }
         }, 7000);
       })();
     </script>
 
+    <div id="rotate-overlay">
+      <div class="phone"></div>
+      <h2>PUTAR PERANGKATMU</h2>
+      <p>Game ini dimainkan dalam posisi horizontal. Putar HP-mu, atau ketuk tombol di bawah untuk layar penuh.</p>
+      <button id="btn-fullscreen">LAYAR PENUH</button>
+    </div>
     <div id="hud">
       <div class="side left">
         <div class="pname">PLAYER 1</div>

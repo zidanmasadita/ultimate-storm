@@ -227,6 +227,19 @@ bindTouchButton('btn-skill', 'skill');
 bindTouchButton('btn-dash', 'dash');
 bindTouchButton('btn-jump', 'jump');
 
+// Tombol layar penuh di gerbang putar: minta fullscreen lalu kunci
+// orientasi landscape (Android Chrome mendukung; iOS mengabaikan
+// dengan aman — pengguna iOS cukup memutar perangkatnya).
+$('btn-fullscreen').addEventListener('click', async () => {
+  try {
+    await document.documentElement.requestFullscreen();
+    const o = screen.orientation as unknown as { lock?: (o: string) => Promise<void> };
+    await o.lock?.('landscape');
+  } catch {
+    /* tidak didukung / ditolak — gerbang putar CSS tetap berlaku */
+  }
+});
+
 function castSkill(caster: Fighter, target: Fighter): void {
   if (caster.skillCooldown > 0 || caster.chakra < 25) return;
   caster.chakra -= 25;
