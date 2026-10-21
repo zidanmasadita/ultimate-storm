@@ -203,6 +203,20 @@ export class Fighter {
   /** Id karakter roster yang sedang dimainkan ('' sebelum memilih). */
   charId = '';
 
+  /** Masih hidup di ronde ini (mode BRAWL: gugur = keluar ronde). */
+  alive = true;
+  /** Poin ronde di match berjalan (mode BRAWL). */
+  score = 0;
+  /** Nama tampil untuk plat kepala & klasemen (BRAWL). */
+  displayName = '';
+  /** Waktu sejak gugur (untuk animasi jatuh). */
+  downT = 0;
+  /** Status pilot bot (dipakai updateBot untuk semua bot). */
+  botThink = 0;
+  botStrafe = 1;
+  botMode: 'chase' | 'strafe' | 'retreat' = 'chase';
+  botTarget: Fighter | null = null;
+
   attackTimer = 0;
   attackCooldown = 0;
   dashTimer = 0;
@@ -336,6 +350,18 @@ export class Fighter {
   /** Animasi prosedural per frame. t = waktu total (detik). */
   animate(dt: number, t: number, speed2D: number): void {
     const inner = this.inner;
+
+    // GUGUR: rebah rata ke belakang, berhenti di tanah.
+    if (!this.alive) {
+      if (this.mixer) this.updateRig(dt, 0);
+      inner.rotation.x = THREE.MathUtils.damp(inner.rotation.x, -Math.PI / 2, 7, dt);
+      inner.rotation.z = THREE.MathUtils.damp(inner.rotation.z, 0, 7, dt);
+      inner.rotation.y = 0;
+      inner.position.y = 0;
+      this.group.rotation.y = this.facing;
+      return;
+    }
+
     const rigged = this.mixer !== null;
     if (rigged) this.updateRig(dt, speed2D);
 
@@ -407,6 +433,10 @@ export class Fighter {
     this.vy = 0;
     this.facing = facing;
     this.hp = 100;
+    this.alive = true;
+    this.downT = 0;
+    this.botTarget = null;
+    this.inner.rotation.x = 0;
     this.chakra = this.chakraMax;
     this.attackTimer = 0;
     this.hitTimer = 0;

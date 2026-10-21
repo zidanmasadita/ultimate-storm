@@ -188,7 +188,8 @@ interface Projectile {
   vel: THREE.Vector3;
   life: number;
   owner: Fighter;
-  target: Fighter;
+  /** Korban terkunci, atau null = mengenai petarung mana pun yang dilewati. */
+  target: Fighter | null;
   damage: number;
   color: number;
   displace: number;
@@ -200,7 +201,7 @@ const projGeo = new THREE.SphereGeometry(0.22, 16, 12);
 const basicGeo = new THREE.SphereGeometry(0.15, 12, 10);
 
 /** Lahirkan satu proyektil (dipakai skill & basic attack jarak jauh). */
-function spawnProjectile(owner: Fighter, target: Fighter, start: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, color: number, geo: THREE.BufferGeometry, displace = 0): void {
+function spawnProjectile(owner: Fighter, target: Fighter | null, start: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, color: number, geo: THREE.BufferGeometry, displace = 0): void {
   const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color }));
   mesh.position.copy(start);
   scene.add(mesh);
@@ -297,8 +298,7 @@ function castSkill(caster: Fighter, aimError = 0): void {
   // (Bot diberi aimError kecil supaya tembakannya bisa dihindari.)
   const aim = caster.facing + aimError;
   const dir = new THREE.Vector3(Math.sin(aim), 0, Math.cos(aim));
-  const foe = caster === player ? enemy : player;
-  spawnProjectile(caster, foe, start, dir, sk.projectileSpeed, sk.damage, sk.projectileColor, projGeo, sk.displace ?? 0);
+  spawnProjectile(caster, null, start, dir, sk.projectileSpeed, sk.damage, sk.projectileColor, projGeo, sk.displace ?? 0);
   effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
   if (netRole === 'host' && net) net.sendGame('cast', { x: start.x, y: start.y, z: start.z, c: sk.projectileColor });
 }
@@ -310,30 +310,40 @@ function updateProjectiles(dt: number): void {
     p.mesh.position.addScaledVector(p.vel, dt);
     effects.burst(p.mesh.position, p.color, 2, 0.6, 0.3, 0.1);
 
-    const targetPos = p.target.pos.clone().add(new THREE.Vector3(0, 1.1, 0));
-    const hit = p.mesh.position.distanceTo(targetPos) < 1.05;
+    // Korban: petarung pertama (selain penembak) yang dilewati
+    // proyektil — di DUEL praktisnya satu-satunya musuh.
+    let victim: Fighter | null = null;
+    for (const f of fighters) {
+      if (f === p.owner || !f.alive) continue;
+      const tp = f.pos.clone().add(new THREE.Vector3(0, 1.1, 0));
+      if (p.mesh.position.distanceTo(tp) < 1.05) {
+        victim = f;
+        break;
+      }
+    }
+    const hit = victim !== null;
     if (hit || p.life <= 0) {
       effects.burst(p.mesh.position, p.color, 30, 6, 0.55, 0.16);
-      if (hit && p.displace > 0) {
+      if (hit && victim && p.displace > 0) {
         // PORTAL: musuh langsung berpindah tempat ke ARAH ACAK di
         // sekitar titik kena (bukan knockback searah tembakan),
         // tetap di dalam ring.
-        const before = p.target.pos.clone().add(new THREE.Vector3(0, 1.1, 0));
+        const before = victim.pos.clone().add(new THREE.Vector3(0, 1.1, 0));
         const ang = Math.random() * Math.PI * 2;
         const distP = p.displace * (0.75 + Math.random() * 0.5);
-        p.target.pos.x += Math.sin(ang) * distP;
-        p.target.pos.z += Math.cos(ang) * distP;
-        const r = Math.hypot(p.target.pos.x, p.target.pos.z);
+        victim.pos.x += Math.sin(ang) * distP;
+        victim.pos.z += Math.cos(ang) * distP;
+        const r = Math.hypot(victim.pos.x, victim.pos.z);
         if (r > arena.playRadius) {
-          p.target.pos.x *= arena.playRadius / r;
-          p.target.pos.z *= arena.playRadius / r;
+          victim.pos.x *= arena.playRadius / r;
+          victim.pos.z *= arena.playRadius / r;
         }
-        p.target.vel.multiplyScalar(0.25);
+        victim.vel.multiplyScalar(0.25);
         effects.burst(before, p.color, 22, 4, 0.4, 0.14);
-        effects.burst(p.target.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), p.color, 22, 4, 0.4, 0.14);
-        applyHit(p.target, p.owner, p.damage, 1.5);
-      } else if (hit) {
-        applyHit(p.target, p.owner, p.damage, 7);
+        effects.burst(victim.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), p.color, 22, 4, 0.4, 0.14);
+        applyHit(victim, p.owner, p.damage, 1.5);
+      } else if (hit && victim) {
+        applyHit(victim, p.owner, p.damage, 7);
       }
       scene.remove(p.mesh);
       (p.mesh.material as THREE.Material).dispose();
@@ -361,14 +371,21 @@ function applyHit(victim: Fighter, attacker: Fighter, damage: number, knock: num
   shake = Math.min(shake + 0.22, 0.4);
   if (netRole === 'host' && net) net.sendGame('hit', { x: chest.x, y: chest.y, z: chest.z });
 
-  if (victim.hp <= 0 && !roundOver) {
-    roundOver = true;
-    showBanner('K.O.!', 1.6);
-    if (netRole === 'host' && net) {
-      net.sendGame('ko', {});
-      onlineRoundEnd(victim);
-    } else {
-      setTimeout(resetRound, 1600);
+  if (victim.hp <= 0 && victim.alive) {
+    victim.alive = false;
+    victim.downT = 0;
+    if (gameMode === 'brawl' && !net) {
+      // BRAWL: gugur dari ronde; ronde berlanjut sampai sisa satu.
+      onBrawlDown(victim);
+    } else if (!roundOver) {
+      roundOver = true;
+      showBanner('K.O.!', 1.6);
+      if (netRole === 'host' && net) {
+        net.sendGame('ko', {});
+        onlineRoundEnd(victim);
+      } else {
+        setTimeout(resetRound, 1600);
+      }
     }
   }
 }
@@ -425,7 +442,7 @@ function updateScoreLabel(): void {
   $('net-score').textContent = `BO${matchBo} · ${roundsHost} — ${roundsGuest}`;
 }
 
-function tryAttack(attacker: Fighter, victim: Fighter): void {
+function tryAttack(attacker: Fighter): void {
   if (attacker.attackCooldown > 0) return;
   attacker.attackTimer = 0.35;
   attacker.attackCooldown = attacker.basicCooldown;
@@ -437,34 +454,78 @@ function tryAttack(attacker: Fighter, victim: Fighter): void {
   if (rb) {
     const dir = new THREE.Vector3(Math.sin(attacker.facing), 0, Math.cos(attacker.facing));
     const start = attacker.pos.clone().addScaledVector(dir, 0.7).add(new THREE.Vector3(0, 1.3, 0));
-    spawnProjectile(attacker, victim, start, dir, rb.projectileSpeed, rb.damage, rb.color, basicGeo);
+    spawnProjectile(attacker, null, start, dir, rb.projectileSpeed, rb.damage, rb.color, basicGeo);
     effects.burst(start, rb.color, 6, 2, 0.2, 0.08);
     if (netRole === 'host' && net) net.sendGame('cast', { x: start.x, y: start.y, z: start.z, c: rb.color });
     return;
   }
 
-  // Putaran serangan mengenai musuh di dekatnya
+  // Putaran serangan: mengenai SEMUA lawan dalam jangkauan (di DUEL
+  // praktisnya satu musuh; di BRAWL bisa banyak sekaligus)
   setTimeout(() => {
-    const d = attacker.pos.distanceTo(victim.pos);
-    if (d < attacker.basicRange) applyHit(victim, attacker, attacker.meleeDamage, 5);
+    for (const v of fighters) {
+      if (v === attacker || !v.alive) continue;
+      if (attacker.pos.distanceTo(v.pos) < attacker.basicRange) applyHit(v, attacker, attacker.meleeDamage, 5);
+    }
   }, 130);
 }
 
 // ============================================================ AI musuh (level kesulitan dari difficulty.ts)
-let enemyThink = 0;
-let enemyStrafe = 1;
-let enemyMode: 'chase' | 'strafe' | 'retreat' = 'chase';
+// ============================================================ Mode permainan
+// DUEL = 1v1 klasik. BRAWL = sampai 6 petarung sekaligus, eliminasi
+// last-standing per ronde; poin ronde menentukan juara match.
+type GameMode = 'duel' | 'brawl';
+let gameMode: GameMode = localStorage.getItem('us-mode') === 'brawl' ? 'brawl' : 'duel';
+let brawlCount = Math.min(6, Math.max(3, Number(localStorage.getItem('us-brawl-count') ?? 4) || 4));
+/** Semua petarung di match berjalan (DUEL: [player, enemy]). */
+let fighters: Fighter[] = [player, enemy];
+/** Petarung ekstra mode BRAWL (dibuat per match, dibuang setelahnya). */
+const extraFighters: Fighter[] = [];
+let brawlTimer = 0;
+let brawlRound = 0;
+let brawlPick: CharacterDef | null = null;
+let lastStripSecond = -1;
+
+function aliveOthers(f: Fighter): Fighter[] {
+  return fighters.filter((x) => x !== f && x.alive);
+}
+
+function nearestFoe(f: Fighter): Fighter | null {
+  let best: Fighter | null = null;
+  let bd = Infinity;
+  for (const o of aliveOthers(f)) {
+    const d = f.pos.distanceTo(o.pos);
+    if (d < bd) {
+      bd = d;
+      best = o;
+    }
+  }
+  return best;
+}
+
+/** Musuh utama untuk kamera & lock-on pemain (BRAWL: yang terdekat). */
+function mainFoe(): Fighter {
+  return gameMode === 'brawl' && !net ? (nearestFoe(player) ?? enemy) : enemy;
+}
 let botDiff: DifficultyDef =
   DIFFICULTIES.find((d) => d.id === localStorage.getItem('us-difficulty')) ?? DIFFICULTIES[2];
 
-function botDash(dir: THREE.Vector3): void {
-  enemy.dashTimer = 0.18;
-  enemy.dashCooldown = 0.85;
-  enemy.vel.copy(dir.clone().normalize().multiplyScalar(17));
-  effects.burst(enemy.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), 0xffc9a3, 16, 2.5, 0.35, 0.12);
+function botDash(f: Fighter, dir: THREE.Vector3): void {
+  f.dashTimer = 0.18;
+  f.dashCooldown = 0.85;
+  f.vel.copy(dir.clone().normalize().multiplyScalar(17));
+  effects.burst(f.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), 0xffc9a3, 16, 2.5, 0.35, 0.12);
 }
 
-function updateEnemy(dt: number): void {
+function updateBot(enemy: Fighter, dt: number): void {
+  if (!enemy.alive) return;
+  // Target: yang dipilih bot & masih hidup; selain itu musuh terdekat.
+  let player = enemy.botTarget;
+  if (!player || !player.alive || !fighters.includes(player)) {
+    player = nearestFoe(enemy);
+    enemy.botTarget = player;
+  }
+  if (!player) return;
   const dist = enemy.pos.distanceTo(player.pos);
   const toPlayer = player.pos.clone().sub(enemy.pos);
   toPlayer.y = 0;
@@ -473,34 +534,43 @@ function updateEnemy(dt: number): void {
   // Selalu hadap pemain (skill mengikuti hadap; kecepatan putar per level)
   enemy.facing = turnToward(enemy.facing, toPlayerAng, dt * botDiff.turnRate);
 
-  // --- Menghindar: proyektil pemain mendekat -> dash menyamping
+  // --- Menghindar: proyektil lawan mendekat -> dash menyamping
   if (botDiff.dodgeRate > 0 && enemy.dashCooldown <= 0) {
     for (const p of projectiles) {
-      if (p.owner !== player) continue;
+      if (p.owner === enemy) continue;
       const toBot = enemy.pos.clone().sub(p.mesh.position);
       toBot.y = 0;
       if (toBot.length() < 5.2 && Math.random() < dt * botDiff.dodgeRate) {
         const pv = p.vel.clone();
         pv.y = 0;
         pv.normalize();
-        botDash(new THREE.Vector3(-pv.z, 0, pv.x).multiplyScalar(enemyStrafe));
+        botDash(enemy, new THREE.Vector3(-pv.z, 0, pv.x).multiplyScalar(enemy.botStrafe));
         break;
       }
     }
   }
 
   // --- Keputusan berkala (kecepatannya diatur level kesulitan)
-  enemyThink -= dt;
-  if (enemyThink <= 0) {
-    enemyThink = botDiff.thinkMin + Math.random() * (botDiff.thinkMax - botDiff.thinkMin);
-    if (Math.random() < 0.3) enemyStrafe = -enemyStrafe;
-    if (enemy.hp <= 30 && Math.random() < 0.35) enemyMode = 'retreat';
-    else if (dist <= 3.4 && Math.random() < 0.45) enemyMode = 'strafe';
-    else enemyMode = 'chase';
+  enemy.botThink -= dt;
+  if (enemy.botThink <= 0) {
+    enemy.botThink = botDiff.thinkMin + Math.random() * (botDiff.thinkMax - botDiff.thinkMin);
+    if (Math.random() < 0.3) enemy.botStrafe = -enemy.botStrafe;
+    if (enemy.hp <= 30 && Math.random() < 0.35) enemy.botMode = 'retreat';
+    else if (dist <= 3.4 && Math.random() < 0.45) enemy.botMode = 'strafe';
+    else enemy.botMode = 'chase';
+
+    // Kadang ganti target (keramaian tidak monoton): utamakan HP terendah
+    if (Math.random() < 0.3) {
+      const others = aliveOthers(enemy);
+      if (others.length > 1) {
+        others.sort((a, b) => a.hp - b.hp);
+        enemy.botTarget = Math.random() < 0.6 ? others[0] : others[Math.floor(Math.random() * others.length)];
+      }
+    }
 
     // Dash menutup jarak dari menengah
     if (botDiff.dashChance > 0 && dist > 4.5 && dist < 10.5 && enemy.dashCooldown <= 0 && Math.random() < botDiff.dashChance) {
-      botDash(toPlayer);
+      botDash(enemy, toPlayer);
     }
     // Tembak skill bila siap & tidak sedang dash (jitter bidik per level)
     if (
@@ -522,10 +592,10 @@ function updateEnemy(dt: number): void {
   // --- Gerakan sesuai mode (kecepatan diskalakan per level)
   const desired = new THREE.Vector3();
   if (enemy.dashTimer <= 0) {
-    if (enemyMode === 'chase') {
+    if (enemy.botMode === 'chase') {
       if (dist > 2.1) desired.copy(toPlayer.clone().normalize().multiplyScalar(WALK_SPEED * botDiff.speedMul * enemy.moveSpeedMul));
-    } else if (enemyMode === 'strafe') {
-      const tangent = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize().multiplyScalar(enemyStrafe * 5 * botDiff.speedMul);
+    } else if (enemy.botMode === 'strafe') {
+      const tangent = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize().multiplyScalar(enemy.botStrafe * 5 * botDiff.speedMul);
       const inward = toPlayer.clone().normalize().multiplyScalar(dist > 3.4 ? 2 : -1);
       desired.copy(tangent).add(inward);
     } else {
@@ -538,9 +608,9 @@ function updateEnemy(dt: number): void {
   const atkRange = enemy.rangedBasic ? 15 : 2.5;
   if (dist < atkRange) {
     if (botDiff.meleeInstant) {
-      if (enemy.attackCooldown <= 0) tryAttack(enemy, player);
+      if (enemy.attackCooldown <= 0) tryAttack(enemy);
     } else if (Math.random() < dt * botDiff.meleeRate) {
-      tryAttack(enemy, player);
+      tryAttack(enemy);
     }
   }
 }
@@ -639,7 +709,7 @@ function driveFighter(f: Fighter, foe: Fighter, wish: THREE.Vector3, axisMag: nu
   }
 
   // Serangan & jurus
-  if (acts.attack) tryAttack(f, foe);
+  if (acts.attack) tryAttack(f);
   if (acts.skill) castSkill(f);
 }
 
@@ -659,7 +729,7 @@ function updatePlayer(dt: number): void {
   // Magnitud analog: dorongan kecil pada joystick = jalan pelan (keyboard selalu 1)
   const axisMag = Math.min(1, Math.hypot(axis.x, axis.z));
 
-  driveFighter(player, enemy, wish, axisMag, {
+  driveFighter(player, mainFoe(), wish, axisMag, {
     dash: input.consume('dash'),
     jump: input.consume('jump'),
     attack: input.consume('attack'),
@@ -672,7 +742,8 @@ const camPos = new THREE.Vector3(0, 5.5, 13);
 function updateCamera(dt: number): void {
   // Di mode online tamu, "aku" adalah petarung kedua (enemy).
   const me = netRole === 'guest' ? enemy : player;
-  const foe = netRole === 'guest' ? player : enemy;
+  // BRAWL: kamera mengunci musuh terdekat dari si pemain.
+  const foe = netRole === 'guest' ? player : gameMode === 'brawl' && !net ? (nearestFoe(me) ?? enemy) : enemy;
   const toEnemy = foe.pos.clone().sub(me.pos);
   toEnemy.y = 0;
   const dist = Math.max(toEnemy.length(), 0.001);
@@ -690,7 +761,7 @@ function updateCamera(dt: number): void {
     camera.position.x += (Math.random() - 0.5) * shake * 0.5;
     camera.position.y += (Math.random() - 0.5) * shake * 0.5;
   }
-  const mid = player.pos.clone().add(enemy.pos).multiplyScalar(0.5).add(new THREE.Vector3(0, 1.35, 0));
+  const mid = me.pos.clone().add(foe.pos).multiplyScalar(0.5).add(new THREE.Vector3(0, 1.35, 0));
   // Geser titik pandang sedikit ke arah musuh mengikuti jarak
   mid.addScaledVector(toEnemy, Math.min(dist * 0.12, 1.2));
   camera.lookAt(mid);
@@ -704,6 +775,7 @@ let matchStarted = false;
 
 function applyCharacter(f: Fighter, c: CharacterDef): void {
   f.charId = c.id;
+  f.displayName = c.name;
   f.skill = c.skill;
   f.chakraMax = c.chakraMax;
   f.chakraRegen = c.chakraRegen;
@@ -718,6 +790,12 @@ function applyCharacter(f: Fighter, c: CharacterDef): void {
 }
 
 function startMatch(pick: CharacterDef): void {
+  if (gameMode === 'brawl' && !net) {
+    startBrawl(pick);
+    return;
+  }
+  clearBrawl();
+  fighters = [player, enemy];
   const others = CHARACTERS.filter((c) => c.id !== pick.id);
   const foe = others[Math.floor(Math.random() * others.length)] ?? pick;
   roundOver = false;
@@ -735,6 +813,194 @@ function startMatch(pick: CharacterDef): void {
   const tbLabel = document.querySelector('#tb-skill .tb-label');
   if (tbLabel) tbLabel.textContent = pick.skill.name.toUpperCase();
   showBanner('FIGHT!', 1.1);
+}
+
+// ============================================================ Mode BRAWL
+
+function startBrawl(pick: CharacterDef): void {
+  clearBrawl();
+  brawlPick = pick;
+  fighters = [player];
+  applyCharacter(player, pick);
+  player.displayName = 'KAMU';
+  player.score = 0;
+  // Karakter bot: utamakan yang berbeda dari pilihan pemain & sesama
+  // bot; berulang hanya bila jumlah petarung melebihi roster.
+  const pool = [...CHARACTERS.filter((c) => c.id !== pick.id), ...CHARACTERS];
+  for (let i = 0; i < brawlCount - 1; i++) {
+    const c = pool[i % pool.length];
+    const f = new Fighter(chibiModel(c.palette));
+    scene.add(f.group);
+    applyCharacter(f, c);
+    f.score = 0;
+    extraFighters.push(f);
+    fighters.push(f);
+  }
+  enemy.group.visible = false;
+  document.body.classList.add('brawl');
+  matchTarget = Math.floor(bestOf / 2) + 1;
+  brawlRound = 0;
+  matchStarted = true;
+  $('char-select').classList.remove('open');
+  $('name1').textContent = `${pick.name} · ${pick.typeName}`;
+  const tbLabel = document.querySelector('#tb-skill .tb-label');
+  if (tbLabel) tbLabel.textContent = pick.skill.name.toUpperCase();
+  buildPlates();
+  resetBrawlRound();
+}
+
+function resetBrawlRound(): void {
+  brawlRound++;
+  const n = fighters.length;
+  fighters.forEach((f, i) => {
+    const a = (i / n) * Math.PI * 2;
+    const pos = new THREE.Vector3(Math.sin(a) * 6, arena.ringTopY, Math.cos(a) * 6);
+    f.reset(pos, Math.atan2(-pos.x, -pos.z));
+  });
+  for (const p of projectiles) scene.remove(p.mesh);
+  projectiles.length = 0;
+  roundOver = false;
+  brawlTimer = 120;
+  lastStripSecond = -1;
+  updateBrawlStrip();
+  showBanner(brawlRound === 1 ? 'FIGHT!' : `RONDE ${brawlRound} — FIGHT!`, 1.1);
+}
+
+/** Satu petarung BRAWL gugur (dipanggil applyHit). */
+function onBrawlDown(victim: Fighter): void {
+  updateBrawlStrip();
+  const alive = fighters.filter((f) => f.alive);
+  if (alive.length > 1) {
+    showBanner(`${victim.displayName} GUGUR!`, 1.0);
+    return;
+  }
+  if (roundOver) return; // akhir ronde sudah diproses jalur lain
+  const winner = alive[0] ?? null;
+  if (winner) winner.score++;
+  roundOver = true;
+  updateBrawlStrip();
+  setTimeout(() => {
+    if (!matchStarted || gameMode !== 'brawl') return;
+    if (winner && winner.score >= matchTarget) {
+      endBrawlMatch();
+    } else {
+      showBanner(winner ? `${winner.displayName} MENANG RONDE!` : 'RONDE SERI!', 1.4);
+      setTimeout(() => {
+        if (matchStarted && gameMode === 'brawl') resetBrawlRound();
+      }, 1500);
+    }
+  }, 1200);
+}
+
+function updateBrawlTimer(dt: number): void {
+  if (roundOver) return;
+  brawlTimer -= dt;
+  const sec = Math.ceil(brawlTimer);
+  if (sec !== lastStripSecond) {
+    lastStripSecond = sec;
+    updateBrawlStrip();
+  }
+  if (brawlTimer > 0) return;
+  // Waktu habis: sisa HP tertinggi memenangkan ronde.
+  roundOver = true;
+  let winner: Fighter | null = null;
+  for (const f of fighters) {
+    if (f.alive && (!winner || f.hp > winner.hp)) winner = f;
+  }
+  if (winner) winner.score++;
+  updateBrawlStrip();
+  setTimeout(() => {
+    if (!matchStarted || gameMode !== 'brawl') return;
+    if (winner && winner.score >= matchTarget) {
+      endBrawlMatch();
+    } else {
+      showBanner(`WAKTU HABIS — ${winner ? winner.displayName : '-'} MENANG RONDE!`, 1.4);
+      setTimeout(() => {
+        if (matchStarted && gameMode === 'brawl') resetBrawlRound();
+      }, 1500);
+    }
+  }, 600);
+}
+
+function endBrawlMatch(): void {
+  matchStarted = false;
+  const sorted = [...fighters].sort((a, b) => b.score - a.score);
+  const champ = sorted[0];
+  const c = CHARACTERS.find((x) => x.id === champ.charId) ?? CHARACTERS[0];
+  ($('ws-img') as HTMLImageElement).src = c.faceUrl;
+  $('ws-name').textContent = champ.displayName;
+  $('ws-char').textContent = `${c.name} · JUARA BRAWL`;
+  $('ws-score').textContent = sorted.map((f) => `${f.displayName} ${f.score}`).join('  ·  ');
+  $('btn-again').style.display = '';
+  $('winner-screen').classList.add('open');
+}
+
+/** Buang petarung ekstra & kembalikan keadaan DUEL. Aman dipanggil kapan pun. */
+function clearBrawl(): void {
+  for (const f of extraFighters) scene.remove(f.group);
+  extraFighters.length = 0;
+  fighters = [player, enemy];
+  enemy.group.visible = true;
+  document.body.classList.remove('brawl');
+  $('brawl-strip').style.display = 'none';
+  clearPlates();
+}
+
+function updateBrawlStrip(): void {
+  const el = $('brawl-strip');
+  if (gameMode !== 'brawl' || !matchStarted) {
+    el.style.display = 'none';
+    return;
+  }
+  const sorted = [...fighters].sort((a, b) => b.score - a.score);
+  const t = Math.max(0, Math.ceil(brawlTimer));
+  const mm = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  el.textContent = `BRAWL · ${sorted.map((f) => `${f.displayName} ${f.score}`).join(' · ')} · ${mm}`;
+  el.style.display = 'block';
+}
+
+// --- Plat nama + HP mini di atas kepala tiap lawan (BRAWL) ---
+const plateMap = new Map<Fighter, HTMLDivElement>();
+const plateV = new THREE.Vector3();
+
+function buildPlates(): void {
+  clearPlates();
+  const wrap = $('plates');
+  for (const f of fighters) {
+    if (f === player) continue;
+    const d = document.createElement('div');
+    d.className = 'plate';
+    d.innerHTML = `<div class="pl-name">${f.displayName}</div><div class="pl-hp"><div></div></div>`;
+    wrap.appendChild(d);
+    plateMap.set(f, d);
+  }
+}
+
+function clearPlates(): void {
+  $('plates').innerHTML = '';
+  plateMap.clear();
+}
+
+function updatePlates(): void {
+  for (const [f, d] of plateMap) {
+    if (!f.alive || !matchStarted) {
+      d.style.display = 'none';
+      continue;
+    }
+    plateV.copy(f.pos);
+    plateV.y += 2.35;
+    plateV.project(camera);
+    if (plateV.z > 1 || plateV.z < -1) {
+      d.style.display = 'none';
+      continue;
+    }
+    d.style.display = '';
+    const x = (plateV.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-plateV.y * 0.5 + 0.5) * window.innerHeight;
+    d.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+    const bar = d.querySelector('.pl-hp > div') as HTMLElement | null;
+    if (bar) bar.style.width = `${Math.max(0, f.hp)}%`;
+  }
 }
 
 function buildCharCards(): void {
@@ -803,10 +1069,60 @@ function buildDiffChips(): void {
     row.appendChild(chip);
   }
 }
+
+// --- Pemilih mode (DUEL / BRAWL) & jumlah petarung BRAWL ---
+function buildModeRow(): void {
+  const row = $('mode-row');
+  row.innerHTML = '';
+  const modes: { id: GameMode; label: string }[] = [
+    { id: 'duel', label: 'DUEL 1V1' },
+    { id: 'brawl', label: 'BRAWL' },
+  ];
+  for (const m of modes) {
+    const chip = document.createElement('button');
+    chip.className = 'diff-chip' + (gameMode === m.id ? ' sel' : '');
+    chip.innerHTML = `<span>${m.label}</span>`;
+    chip.addEventListener('click', () => {
+      gameMode = m.id;
+      localStorage.setItem('us-mode', m.id);
+      buildModeRow();
+      syncModeRows();
+    });
+    row.appendChild(chip);
+  }
+}
+
+function buildCountRow(): void {
+  const row = $('count-row');
+  row.innerHTML = '';
+  for (const n of [3, 4, 5, 6]) {
+    const chip = document.createElement('button');
+    chip.className = 'diff-chip' + (brawlCount === n ? ' sel' : '');
+    chip.innerHTML = `<span>${n} PETARUNG</span>`;
+    chip.addEventListener('click', () => {
+      brawlCount = n;
+      localStorage.setItem('us-brawl-count', String(n));
+      buildCountRow();
+    });
+    row.appendChild(chip);
+  }
+}
+
+function syncModeRows(): void {
+  const brawl = gameMode === 'brawl';
+  $('count-label').style.display = brawl ? '' : 'none';
+  $('count-row').style.display = brawl ? '' : 'none';
+  $('diff-label').style.display = brawl ? 'none' : '';
+  $('diff-row').style.display = brawl ? 'none' : '';
+}
+buildModeRow();
+buildCountRow();
+syncModeRows();
 buildDiffChips();
 $('char-select').classList.add('open');
 $('btn-chars').addEventListener('click', () => {
   if (net) cleanupNet();
+  clearBrawl();
   matchStarted = false;
   $('char-select').classList.add('open');
   requestAnimationFrame(updateCardZoom);
@@ -1146,6 +1462,7 @@ function cleanupNet(): void {
 function leaveOnlineToSelect(msg: string): void {
   matchStarted = false;
   cleanupNet();
+  clearBrawl();
   $('char-select').classList.add('open');
   setNetStatus(msg);
 }
@@ -1355,6 +1672,10 @@ buildBestOfChips();
 
 $('btn-again').addEventListener('click', () => {
   $('winner-screen').classList.remove('open');
+  if (!net && gameMode === 'brawl' && brawlPick) {
+    startBrawl(brawlPick);
+    return;
+  }
   if (netRole === 'host') {
     if (!guestJoined) {
       leaveOnlineToSelect('Lawan sudah keluar — room ditutup.');
@@ -1401,12 +1722,17 @@ function tick(): void {
       enemy.animate(dt, perfTime, 0);
     }
   } else if (matchStarted) {
-    updatePlayer(dt);
+    if (gameMode !== 'brawl' || player.alive) updatePlayer(dt);
     if (netRole === 'host') driveRemote(dt);
-    else updateEnemy(dt);
-    integrate(player, dt);
-    integrate(enemy, dt);
+    else if (gameMode === 'brawl') {
+      for (const f of fighters) if (f !== player) updateBot(f, dt);
+    } else updateBot(enemy, dt);
+    for (const f of fighters) integrate(f, dt);
     updateProjectiles(dt);
+    if (gameMode === 'brawl' && !net) {
+      updateBrawlTimer(dt);
+      updatePlates();
+    }
     if (netRole === 'host') {
       snapTimer += dt;
       if (snapTimer >= 0.05) {
@@ -1418,6 +1744,7 @@ function tick(): void {
     // Di layer pilih karakter: petarung diam beranimasi idle.
     player.animate(dt, perfTime, 0);
     enemy.animate(dt, perfTime, 0);
+    for (const f of extraFighters) f.animate(dt, perfTime, 0);
   }
   effects.update(dt);
   updateCamera(dt);

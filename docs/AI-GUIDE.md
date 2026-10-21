@@ -85,6 +85,16 @@ mode **online 1v1 pakai room code** (host-authoritative).
 
 ## 4. Sistem pertarungan
 
+- **Dua mode**: DUEL (1v1 klasik; satu-satunya mode online saat
+  ini) dan **BRAWL** (offline, 3–6 petarung, eliminasi
+  last-standing per ronde, target poin dari best-of, batas ronde
+  120 detik). Di BRAWL: combat generik — melee mengenai semua
+  dalam radius, proyektil mengenai petarung pertama yang
+  dilewati, bot memilih targetnya sendiri, plat nama+HP di atas
+  kepala, klasemen berjalan di strip atas. Petarung match berjalan
+  ada di daftar `fighters[]`; `player`/`enemy` hanya anggota
+  tetapnya di DUEL.
+
 - Loop: `updatePlayer`/`updateEnemy` (atau `driveRemote` online) →
   `integrate` (fisika, gravitasi, timer, regen chakra) →
   `updateProjectiles`. Semua aksi pemain lokal maupun input tamu
