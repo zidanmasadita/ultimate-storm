@@ -526,11 +526,8 @@ function buildCharCards(): void {
     card.className = 'char-card';
     card.style.setProperty('--accent', c.accent);
     card.innerHTML =
-      `<span class="cc-emblem">${c.name.charAt(0)}</span>` +
-      `<span class="cc-name">${c.name}</span>` +
-      `<span class="cc-epithet">${c.epithet}</span>` +
-      `<span class="cc-skill">Skill: <b>${c.skill.name}</b></span>` +
-      `<span class="cc-stats">DMG ${c.skill.damage} · Chakra ${c.skill.chakraCost} · Cooldown ${c.skill.cooldown}s</span>`;
+      `<span class="cc-face"><img src="${c.faceUrl}" alt="${c.name}"></span>` +
+      `<span class="cc-name">${c.name}</span>`;
     card.addEventListener('click', () => startMatch(c));
     wrap.appendChild(card);
   }

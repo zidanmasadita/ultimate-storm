@@ -23,6 +23,8 @@ export interface CharacterDef {
   name: string;
   epithet: string;
   modelUrl: string;
+  /** Foto muka karakter untuk kartu pilih (di dalam jajar genjang). */
+  faceUrl: string;
   /** Palet chibi: dipakai saat model belum termuat / gagal. */
   palette: ChibiPalette;
   /** Warna aksen kartu pilih karakter (CSS). */
@@ -46,6 +48,7 @@ export const CHARACTERS: CharacterDef[] = [
     name: 'OMEN',
     epithet: 'Jubah Putih',
     modelUrl: 'models/player1.glb',
+    faceUrl: 'faces/omen.jpg',
     palette: { outfit: 0x2f6fd6, hair: 0x23202e, band: 0x2440a0 },
     accent: '#dfe7ff',
     skill: {
@@ -62,6 +65,7 @@ export const CHARACTERS: CharacterDef[] = [
     name: 'KOBOI',
     epithet: 'Penembak Barat',
     modelUrl: 'models/player2.glb',
+    faceUrl: 'faces/koboi.jpg',
     palette: { outfit: 0xd64a2f, hair: 0x3a2318, band: 0xa02418 },
     accent: '#ffb52e',
     skill: {
