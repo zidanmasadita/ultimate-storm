@@ -697,9 +697,11 @@ function driveFighter(f: Fighter, foe: Fighter, wish: THREE.Vector3, axisMag: nu
   // Hadap: arah gerak saat bergerak; selain itu hadap musuh (lock-on
   // lembut) — KECUALI mode BRAWL: tanpa lock-on sama sekali, karakter
   // mempertahankan arah hadap terakhirnya dan skill menembak lurus
-  // ke depan karakter.
+  // ke depan karakter. Putaran BRAWL dibuat nyaris seketika (konsep
+  // Roblox: karakter selalu terkunci menghadap ke depan kamera).
+  const turnRate = gameMode === 'brawl' && !net ? 22 : 11;
   if (moving && f.dashTimer <= 0) {
-    f.facing = turnToward(f.facing, Math.atan2(wish.x, wish.z), dt * 11);
+    f.facing = turnToward(f.facing, Math.atan2(wish.x, wish.z), dt * turnRate);
   } else if (!(gameMode === 'brawl' && !net)) {
     const toFoe = Math.atan2(foe.pos.x - f.pos.x, foe.pos.z - f.pos.z);
     f.facing = turnToward(f.facing, toFoe, dt * 8);
@@ -750,15 +752,19 @@ function updateCamera(dt: number): void {
 
   // BRAWL (pemain masih hidup): kamera IKUTI dari belakang mengikuti
   // arah hadap pemain — tanpa lock-on; titik pandang ke depan
-  // karakter. (Bila pemain sudah gugur, jatuh ke kamera penonton
-  // biasa di bawah yang membingkai musuh terdekat.)
+  // karakter. Redaman posisi dibuat kencang (12) supaya kamera
+  // terkunci rapat di belakang arah hadap ala kamera Roblox:
+  // karakter selalu tampak menghadap lurus ke depan layar dan
+  // skill selalu meluncur ke tengah depan pandangan.
+  // (Bila pemain sudah gugur, jatuh ke kamera penonton biasa di
+  // bawah yang membingkai musuh terdekat.)
   if (gameMode === 'brawl' && !net && me.alive) {
     const back = new THREE.Vector3(Math.sin(me.facing), 0, Math.cos(me.facing));
     const behind = me.pos.clone().addScaledVector(back, -7.6).add(new THREE.Vector3(0, 3.4, 0));
     behind.y = Math.max(behind.y, arena.ringTopY + 1.4);
-    camPos.x = THREE.MathUtils.damp(camPos.x, behind.x, 5, dt);
-    camPos.y = THREE.MathUtils.damp(camPos.y, behind.y, 5, dt);
-    camPos.z = THREE.MathUtils.damp(camPos.z, behind.z, 5, dt);
+    camPos.x = THREE.MathUtils.damp(camPos.x, behind.x, 12, dt);
+    camPos.y = THREE.MathUtils.damp(camPos.y, behind.y, 12, dt);
+    camPos.z = THREE.MathUtils.damp(camPos.z, behind.z, 12, dt);
     camera.position.copy(camPos);
     if (shake > 0) {
       shake = Math.max(0, shake - dt * 1.4);
