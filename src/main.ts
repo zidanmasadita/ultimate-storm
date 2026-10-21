@@ -914,8 +914,8 @@ function startOnlineMatch(hc: CharacterDef, gc: CharacterDef, info?: { bo: numbe
   matchStarted = true;
   $('winner-screen').classList.remove('open');
   $('char-select').classList.remove('open');
-  $('name1').textContent = hostUser.toUpperCase();
-  $('name2').textContent = guestUser.toUpperCase();
+  $('name1').textContent = `${hostUser} - ${hc.name}`;
+  $('name2').textContent = `${guestUser} - ${gc.name}`;
   const mine = netRole === 'guest' ? gc : hc;
   const tbLabel = document.querySelector('#tb-skill .tb-label');
   if (tbLabel) tbLabel.textContent = mine.skill.name.toUpperCase();
@@ -1112,9 +1112,13 @@ function beginNet(role: 'host' | 'guest', code = ''): void {
   };
   n.onGame = (m) => handleGameMsg(m);
   n.onPeerLeft = () => {
-    if (matchStarted) {
-      showBanner('LAWAN TERPUTUS', 1.4);
-      leaveOnlineToSelect('Lawan terputus dari pertarungan.');
+    // Sekali match pernah berjalan (termasuk layar pemenang), lawan
+    // keluar = room ditutup untuk semua — tidak ada main lagi
+    // melawan kursi kosong.
+    const wasInMatch = matchStarted || matchDecided || curHostChar !== null;
+    if (wasInMatch) {
+      if (matchStarted) showBanner('LAWAN TERPUTUS', 1.4);
+      leaveOnlineToSelect('Lawan keluar dari permainan — room ditutup.');
     } else if (netRole === 'host') {
       guestJoined = false;
       guestPick = null;
@@ -1208,6 +1212,10 @@ buildBestOfChips();
 $('btn-again').addEventListener('click', () => {
   $('winner-screen').classList.remove('open');
   if (netRole === 'host') {
+    if (!guestJoined) {
+      leaveOnlineToSelect('Lawan sudah keluar — room ditutup.');
+      return;
+    }
     hostPick = curHostChar;
     guestPick = curGuestChar;
     hostBeginMatch();
