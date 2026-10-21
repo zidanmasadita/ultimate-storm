@@ -208,18 +208,29 @@ const basicGeo = new THREE.SphereGeometry(0.15, 12, 10);
 /**
  * Basic attack jarak jauh EFEKTIF seorang karakter:
  * - `rangedBasic` eksplisit di data karakter selalu menang.
- * - SEMUA karakter tipe Projectile otomatis dapat tembakan ringan
- *   turunan skillnya: damage ±22% skill, tanpa biaya chakra, jeda
- *   cepat dari `basicCooldown`. Skill tetap tembakan beratnya —
- *   damage besar, pakai chakra, jeda lama, proyektil BESAR.
+ * - Tipe Projectile: tembakan ringan turunan skill (damage ±22%
+ *   skill, tanpa chakra, jeda cepat). Skill tetap tembakan
+ *   beratnya — damage besar, pakai chakra, jeda lama, proyektil
+ *   BESAR.
+ * - Tipe Penyihir: lemparan sihir kecil (damage 50% skill — skill
+ *   penyihir memang ringan), TANPA efek khusus skill (Portal/slow
+ *   hanya milik skill), jeda mengikuti basicCooldown cepatnya.
  * - Tipe lain: null (basic melee).
  */
 function effectiveRangedBasic(c: CharacterDef): RangedBasicDef | null {
   if (c.rangedBasic) return c.rangedBasic;
-  if (c.typeName === 'Projectile' && c.skill.kind === 'projectile') {
+  if (c.skill.kind !== 'projectile') return null;
+  if (c.typeName === 'Projectile') {
     return {
       damage: Math.max(2, Math.round(c.skill.damage * 0.22)),
       projectileSpeed: Math.max(18, Math.round(c.skill.projectileSpeed * 0.9)),
+      color: c.skill.projectileColor,
+    };
+  }
+  if (c.typeName === 'Penyihir') {
+    return {
+      damage: Math.max(3, Math.round(c.skill.damage * 0.5)),
+      projectileSpeed: Math.round(c.skill.projectileSpeed * 1.1),
       color: c.skill.projectileColor,
     };
   }
