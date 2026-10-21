@@ -255,7 +255,7 @@ $('btn-fullscreen').addEventListener('click', async () => {
   }
 });
 
-function castSkill(caster: Fighter): void {
+function castSkill(caster: Fighter, aimError = 0): void {
   const sk = caster.skill;
   if (caster.skillCooldown > 0 || caster.chakra < sk.chakraCost) return;
   caster.chakra -= sk.chakraCost;
@@ -269,7 +269,9 @@ function castSkill(caster: Fighter): void {
 
   // TANPA auto-aim: proyektil terbang lurus mengikuti arah hadap
   // penembak. Pemain harus menghadapkan karakter sendiri ke musuh.
-  const dir = new THREE.Vector3(Math.sin(caster.facing), 0, Math.cos(caster.facing));
+  // (Bot diberi aimError kecil supaya tembakannya bisa dihindari.)
+  const aim = caster.facing + aimError;
+  const dir = new THREE.Vector3(Math.sin(aim), 0, Math.cos(aim));
   const foe = caster === player ? enemy : player;
   projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target: foe, damage: sk.damage, color: sk.projectileColor });
   effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
@@ -331,37 +333,92 @@ function tryAttack(attacker: Fighter, victim: Fighter): void {
   }, 130);
 }
 
-// ============================================================ AI musuh sederhana (fase environment: mondar-mandir + jaga jarak)
+// ============================================================ AI musuh — mode SULIT
+// Bot aktif: mengejar, menembak skill, dash menutup jarak, menghindar
+// dari proyektil pemain, dan menyerang jarak dekat tanpa ampun.
 let enemyThink = 0;
-let enemyTarget = SPAWN_2.clone();
+let enemyStrafe = 1;
+let enemyMode: 'chase' | 'strafe' | 'retreat' = 'chase';
+
+function botDash(dir: THREE.Vector3): void {
+  enemy.dashTimer = 0.18;
+  enemy.dashCooldown = 0.85;
+  enemy.vel.copy(dir.clone().normalize().multiplyScalar(17));
+  effects.burst(enemy.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), 0xffc9a3, 16, 2.5, 0.35, 0.12);
+}
 
 function updateEnemy(dt: number): void {
+  const dist = enemy.pos.distanceTo(player.pos);
+  const toPlayer = player.pos.clone().sub(enemy.pos);
+  toPlayer.y = 0;
+  const toPlayerAng = Math.atan2(toPlayer.x, toPlayer.z);
+
+  // Selalu hadap pemain dengan putaran cepat (skill mengikuti hadap)
+  enemy.facing = turnToward(enemy.facing, toPlayerAng, dt * 10);
+
+  // --- Menghindar: proyektil pemain mendekat -> dash menyamping
+  if (enemy.dashCooldown <= 0) {
+    for (const p of projectiles) {
+      if (p.owner !== player) continue;
+      const toBot = enemy.pos.clone().sub(p.mesh.position);
+      toBot.y = 0;
+      if (toBot.length() < 5.2 && Math.random() < dt * 7) {
+        const pv = p.vel.clone();
+        pv.y = 0;
+        pv.normalize();
+        botDash(new THREE.Vector3(-pv.z, 0, pv.x).multiplyScalar(enemyStrafe));
+        break;
+      }
+    }
+  }
+
+  // --- Keputusan berkala (cepat, seperti refleks pemain bagus)
   enemyThink -= dt;
   if (enemyThink <= 0) {
-    enemyThink = 1.6 + Math.random() * 1.6;
-    // Pilih titik jaga jarak dari pemain, tetap di dalam ring
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 3.5 + Math.random() * 3;
-    enemyTarget = player.pos.clone().add(new THREE.Vector3(Math.cos(angle) * dist, 0, Math.sin(angle) * dist));
-    enemyTarget.y = arena.ringTopY;
-    const r = Math.hypot(enemyTarget.x, enemyTarget.z);
-    if (r > arena.playRadius) enemyTarget.multiplyScalar(arena.playRadius / r).setY(arena.ringTopY);
+    enemyThink = 0.2 + Math.random() * 0.15;
+    if (Math.random() < 0.3) enemyStrafe = -enemyStrafe;
+    if (enemy.hp <= 30 && Math.random() < 0.35) enemyMode = 'retreat';
+    else if (dist <= 3.4 && Math.random() < 0.45) enemyMode = 'strafe';
+    else enemyMode = 'chase';
+
+    // Dash menutup jarak dari menengah
+    if (dist > 4.5 && dist < 10.5 && enemy.dashCooldown <= 0 && Math.random() < 0.7) {
+      botDash(toPlayer);
+    }
+    // Tembak skill bila siap & tidak sedang dash (jitter bidik kecil)
+    if (
+      enemy.dashTimer <= 0 &&
+      enemy.skillCooldown <= 0 &&
+      enemy.chakra >= enemy.skill.chakraCost &&
+      dist < 15 &&
+      Math.random() < 0.85
+    ) {
+      castSkill(enemy, (Math.random() - 0.5) * 0.1);
+    }
+    // Kadang lompat menghindari serangan putar pemain
+    if (player.attackTimer > 0 && dist < 3.2 && enemy.grounded && Math.random() < 0.4) {
+      enemy.vy = 9.2;
+      enemy.grounded = false;
+    }
   }
 
-  const toTarget = enemyTarget.clone().sub(enemy.pos);
-  toTarget.y = 0;
+  // --- Gerakan sesuai mode (kecepatan setara pemain)
   const desired = new THREE.Vector3();
-  if (toTarget.length() > 0.6) {
-    desired.copy(toTarget.normalize()).multiplyScalar(3.1);
+  if (enemy.dashTimer <= 0) {
+    if (enemyMode === 'chase') {
+      if (dist > 2.1) desired.copy(toPlayer.clone().normalize().multiplyScalar(WALK_SPEED));
+    } else if (enemyMode === 'strafe') {
+      const tangent = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize().multiplyScalar(enemyStrafe * 5);
+      const inward = toPlayer.clone().normalize().multiplyScalar(dist > 3.4 ? 2 : -1);
+      desired.copy(tangent).add(inward);
+    } else {
+      desired.copy(toPlayer.clone().normalize().multiplyScalar(-WALK_SPEED));
+    }
+    steer(enemy, desired, dt);
   }
-  steer(enemy, desired, dt);
 
-  // Selalu menghadap pemain
-  const toPlayer = Math.atan2(player.pos.x - enemy.pos.x, player.pos.z - enemy.pos.z);
-  enemy.facing = turnToward(enemy.facing, toPlayer, dt * 7);
-
-  // Kadang menyerang balik kalau dekat (biar keybind musuh terasa hidup)
-  if (enemy.pos.distanceTo(player.pos) < 2.4 && Math.random() < dt * 0.55) {
+  // --- Serangan jarak dekat: setiap cooldown selesai, langsung pukul
+  if (dist < 2.5 && enemy.attackCooldown <= 0) {
     tryAttack(enemy, player);
   }
 }
