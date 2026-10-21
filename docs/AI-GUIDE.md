@@ -125,6 +125,16 @@ mode **online 1v1 pakai room code** (host-authoritative).
 5. Build, uji parse ES2019, commit, push. Karakter otomatis muncul
    di carousel, bisa dipilih bot sebagai lawan, dan tersedia online.
 
+**Model bertulang (rigged)**: bila GLB membawa skin + klip animasi
+(seperti Ryu dari Meshy AI), `Fighter` otomatis memakai jalur
+AnimationMixer — status: diam = pose ikat, gerak pelan = klip
+bernama *walk*, cepat = *run*, menyerang = klip *box* (potongan awal
+2,2× selama 0,45 dtk). Clone model bertulang WAJIB lewat
+SkeletonUtils. Gerak maju pada tulang Hips dikunci di loader
+(`flattenHipsXZ`) karena posisi diatur logika game. Karakter tanpa
+klip tetap prosedural; jalur dipilih per karakter dari ada/tidaknya
+klip, jadi roster campuran aman.
+
 ## 6. Mode online — cara kerja
 
 - **Relay** (`server/worker.js`): Worker menerima WebSocket di

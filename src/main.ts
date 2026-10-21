@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildArena } from './game/arena';
-import { Fighter, chibiModel, loadFighterModel, turnToward } from './game/character';
+import { Fighter, chibiModel, loadFighterAsset, turnToward, type FighterAsset } from './game/character';
 import { CHARACTERS, type CharacterDef } from './game/characters';
 import { DIFFICULTIES, type DifficultyDef } from './game/difficulty';
 import { Effects } from './game/effects';
@@ -83,12 +83,17 @@ player.reset(SPAWN_1, Math.PI / 2);
 enemy.reset(SPAWN_2, -Math.PI / 2);
 scene.add(player.group, enemy.group);
 
-const modelCache = new Map<string, THREE.Object3D>();
+const modelCache = new Map<string, FighterAsset>();
+/** Pasang aset ke petarung: model bertulang memakai jalur klip animasi. */
+function installAsset(f: Fighter, a: FighterAsset): void {
+  if (a.animations.length > 0) f.setModelRigged(a.root, a.animations);
+  else f.setModel(a.root);
+}
 for (const c of CHARACTERS) {
-  loadFighterModel(c.modelUrl, c.palette).then((m) => {
-    modelCache.set(c.id, m);
-    if (player.charId === c.id) player.setModel(m);
-    if (enemy.charId === c.id) enemy.setModel(m);
+  loadFighterAsset(c.modelUrl, c.palette).then((a) => {
+    modelCache.set(c.id, a);
+    if (player.charId === c.id) installAsset(player, a);
+    if (enemy.charId === c.id) installAsset(enemy, a);
   });
 }
 
@@ -707,8 +712,8 @@ function applyCharacter(f: Fighter, c: CharacterDef): void {
   f.basicCooldown = c.basicCooldown ?? 0.45;
   f.basicRange = c.basicRange ?? 2.5;
   f.rangedBasic = c.rangedBasic ?? null;
-  const m = modelCache.get(c.id);
-  if (m) f.setModel(m);
+  const a = modelCache.get(c.id);
+  if (a) installAsset(f, a);
   else f.setModel(chibiModel(c.palette));
 }
 

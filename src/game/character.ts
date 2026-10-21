@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 import { DEFAULT_SKILL, type SkillDef } from './characters';
 
 /**
@@ -105,16 +106,46 @@ export function chibiModel(p: ChibiPalette): THREE.Group {
 
 export const FIGHTER_HEIGHT = 1.8;
 
+export interface FighterAsset {
+  root: THREE.Object3D;
+  /** Klip animasi dari GLB (kosong bila model tidak bertulang). */
+  animations: THREE.AnimationClip[];
+}
+
+/**
+ * Kunci gerak tulang pinggul (Hips) pada sumbu X/Z di nilai frame
+ * pertama: klip Mixamo membawa gerak maju pada tulang, padahal posisi
+ * karakter diatur logika game — tanpa ini model melayang dari titik
+ * logisnya lalu tersentak balik tiap klip mengulang.
+ */
+function flattenHipsXZ(clips: THREE.AnimationClip[]): void {
+  for (const clip of clips) {
+    for (const track of clip.tracks) {
+      if (!track.name.endsWith('.position')) continue;
+      if (!track.name.toLowerCase().includes('hips')) continue;
+      const v = track.values;
+      const x0 = v[0];
+      const z0 = v[2];
+      for (let i = 0; i < v.length; i += 3) {
+        v[i] = x0;
+        v[i + 2] = z0;
+      }
+    }
+  }
+}
+
 /**
  * Muat GLB karakter asli; normalisasi skala ke FIGHTER_HEIGHT dan
- * pijak tanah y=0. Gagal -> chibi cadangan. Model tidak punya rig,
- * jadi animasi tetap prosedural pada model utuh.
+ * pijak tanah y=0. Gagal -> chibi cadangan. Model tanpa rig tetap
+ * dianimasikan prosedural; model bertulang memakai klip bawaannya.
  */
-export async function loadFighterModel(url: string, fallback: ChibiPalette): Promise<THREE.Object3D> {
+export async function loadFighterAsset(url: string, fallback: ChibiPalette): Promise<FighterAsset> {
   try {
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(url);
     const root = gltf.scene;
+    const animations = gltf.animations ?? [];
+    flattenHipsXZ(animations);
 
     const box = new THREE.Box3().setFromObject(root);
     const size = new THREE.Vector3();
@@ -135,9 +166,9 @@ export async function loadFighterModel(url: string, fallback: ChibiPalette): Pro
         o.castShadow = true;
       }
     });
-    return wrap;
+    return { root: wrap, animations };
   } catch (_) {
-    return chibiModel(fallback);
+    return { root: chibiModel(fallback), animations: [] };
   }
 }
 
@@ -186,6 +217,15 @@ export class Fighter {
   private armR: THREE.Object3D | null = null;
   private headGrp: THREE.Object3D | null = null;
 
+  // --- Jalur model BERTULANG (rigged): klip animasi bawaan GLB ---
+  private mixer: THREE.AnimationMixer | null = null;
+  private actWalk: THREE.AnimationAction | null = null;
+  private actRun: THREE.AnimationAction | null = null;
+  private actBox: THREE.AnimationAction | null = null;
+  private rigClock = 0;
+  private attackUntil = -1;
+  private wasAttacking = false;
+
   constructor(model: THREE.Object3D) {
     this.group.add(this.inner);
     this.setModel(model);
@@ -193,13 +233,24 @@ export class Fighter {
 
   /** Ganti model di dalam grup (chibi pembuka -> GLB asli saat selesai dimuat). */
   setModel(model: THREE.Object3D): void {
+    this.install(model.clone(true), null);
+  }
+
+  /**
+   * Pasang model BERTULANG beserta klip animasinya. Clone memakai
+   * SkeletonUtils — clone biasa merusak ikatan tulang ke skeleton.
+   */
+  setModelRigged(source: THREE.Object3D, clips: THREE.AnimationClip[]): void {
+    this.install(skeletonClone(source), clips);
+  }
+
+  private install(inst: THREE.Object3D, clips: THREE.AnimationClip[] | null): void {
     this.inner.clear();
     // WAJIB salin: satu Object3D hanya bisa punya satu induk. Tanpa
     // clone, dua petarung berkarakter sama (mirror pick online) akan
     // saling mencabut model — yang pertama jadi tidak terlihat.
     // Material ikut disalin agar pijar buff/flash kena pukul satu
     // petarung tidak menyala di kembarannya.
-    const inst = model.clone(true);
     inst.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (mesh.isMesh) mesh.material = (mesh.material as THREE.Material).clone();
@@ -219,21 +270,81 @@ export class Fighter {
       if (o.name === 'armR') this.armR = o;
       if (o.name === 'head') this.headGrp = o;
     });
+
+    // Siapkan mixer bila model membawa klip (rigged)
+    this.mixer = null;
+    this.actWalk = null;
+    this.actRun = null;
+    this.actBox = null;
+    this.attackUntil = -1;
+    this.wasAttacking = false;
+    if (clips && clips.length > 0) {
+      const byName = (key: string) => clips.find((c) => c.name.toLowerCase().includes(key));
+      this.mixer = new THREE.AnimationMixer(inst);
+      const mk = (clip: THREE.AnimationClip | undefined, loop: THREE.AnimationActionLoopStyles) => {
+        if (!clip) return null;
+        const a = this.mixer!.clipAction(clip);
+        a.setLoop(loop, Infinity);
+        a.setEffectiveWeight(0);
+        a.enabled = true;
+        a.play();
+        return a;
+      };
+      this.actWalk = mk(byName('walk'), THREE.LoopRepeat);
+      this.actRun = mk(byName('run'), THREE.LoopRepeat);
+      this.actBox = mk(byName('box'), THREE.LoopOnce);
+    }
   }
 
   get pos(): THREE.Vector3 {
     return this.group.position;
   }
 
+  /**
+   * Mesin status animasi bertulang: diam -> pose ikat (semua bobot
+   * klip 0), gerak pelan -> Walking, cepat -> Running, menyerang ->
+   * potongan awal klip Boxing diputar 2,2x selama 0,45 detik.
+   */
+  private updateRig(dt: number, speed2D: number): void {
+    if (!this.mixer) return;
+    this.rigClock += dt;
+
+    const attacking = this.attackTimer > 0;
+    if (attacking && !this.wasAttacking && this.actBox) {
+      this.actBox.reset().play();
+      this.actBox.timeScale = 2.2;
+      this.attackUntil = this.rigClock + 0.45;
+    }
+    this.wasAttacking = attacking;
+
+    let wWalk = 0;
+    let wRun = 0;
+    let wBox = 0;
+    if (this.rigClock < this.attackUntil) wBox = 1;
+    else if (speed2D > 4.2) wRun = 1;
+    else if (speed2D > 0.4) wWalk = 1;
+
+    const dampW = (a: THREE.AnimationAction | null, target: number) => {
+      if (a) a.setEffectiveWeight(THREE.MathUtils.damp(a.getEffectiveWeight(), target, 14, dt));
+    };
+    dampW(this.actWalk, wWalk);
+    dampW(this.actRun, wRun);
+    dampW(this.actBox, wBox);
+    this.mixer.update(dt);
+  }
+
   /** Animasi prosedural per frame. t = waktu total (detik). */
   animate(dt: number, t: number, speed2D: number): void {
     const inner = this.inner;
+    const rigged = this.mixer !== null;
+    if (rigged) this.updateRig(dt, speed2D);
 
-    // Napas/bob idle + bob lebih cepat saat bergerak
+    // Napas/bob idle + bob lebih cepat saat bergerak (model bertulang
+    // sudah bergerak dari klipnya — bob dimatikan agar tidak ganda)
     const moving = speed2D > 0.4;
     const bobFreq = moving ? 11 : 2.2;
     const bobAmp = moving ? 0.05 : 0.028;
-    inner.position.y = Math.abs(Math.sin(t * bobFreq)) * bobAmp;
+    inner.position.y = rigged ? 0 : Math.abs(Math.sin(t * bobFreq)) * bobAmp;
 
     // Miring ke arah gerak (lean) — dari kecepatan lokal
     const localVel = this.vel.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -this.facing);
@@ -262,8 +373,9 @@ export class Fighter {
       this.headGrp.rotation.x = attacking ? 0.22 : Math.sin(t * 2.2) * 0.04;
     }
 
-    // Serangan: putaran cepat 360 derajat
-    if (attacking) {
+    // Serangan: putaran cepat 360 derajat (model bertulang memakai
+    // klip tinjunya sendiri — tidak ikut berputar)
+    if (attacking && !rigged) {
       const p = 1 - this.attackTimer / 0.35; // 0..1
       inner.rotation.y = p * Math.PI * 2;
       inner.position.y += Math.sin(p * Math.PI) * 0.12;
