@@ -351,16 +351,68 @@ function applyHit(victim: Fighter, attacker: Fighter, damage: number, knock: num
   shake = Math.min(shake + 0.22, 0.4);
   if (netRole === 'host' && net) net.sendGame('hit', { x: chest.x, y: chest.y, z: chest.z });
 
-  if (victim.hp <= 0) {
+  if (victim.hp <= 0 && !roundOver) {
+    roundOver = true;
     showBanner('K.O.!', 1.6);
-    if (netRole === 'host' && net) net.sendGame('ko', {});
-    setTimeout(() => {
-      player.reset(SPAWN_1, Math.PI / 2);
-      enemy.reset(SPAWN_2, -Math.PI / 2);
-      showBanner('FIGHT!', 0.9);
-      if (netRole === 'host' && net) net.sendGame('fight', {});
-    }, 1600);
+    if (netRole === 'host' && net) {
+      net.sendGame('ko', {});
+      onlineRoundEnd(victim);
+    } else {
+      setTimeout(resetRound, 1600);
+    }
   }
+}
+
+/** Reset posisi/HP kedua petarung untuk ronde berikutnya. */
+function resetRound(): void {
+  player.reset(SPAWN_1, Math.PI / 2);
+  enemy.reset(SPAWN_2, -Math.PI / 2);
+  roundOver = false;
+  showBanner('FIGHT!', 0.9);
+  if (netRole === 'host' && net) net.sendGame('fight', {});
+}
+
+/** Host online: catat pemenang ronde, siarkan skor, putuskan match. */
+function onlineRoundEnd(victim: Fighter): void {
+  if (!net) return;
+  const winner: 'host' | 'guest' = victim === enemy ? 'host' : 'guest';
+  if (winner === 'host') roundsHost++;
+  else roundsGuest++;
+  net.sendGame('score', { h: roundsHost, g: roundsGuest });
+  updateScoreLabel();
+  if (roundsHost >= matchTarget || roundsGuest >= matchTarget) {
+    matchDecided = true;
+    setTimeout(() => {
+      if (!net) return;
+      net.sendGame('matchwin', { winner, h: roundsHost, g: roundsGuest });
+      decideWinner(winner);
+    }, 1700);
+  } else {
+    setTimeout(resetRound, 1600);
+  }
+}
+
+/** Match selesai: hentikan simulasi, tampilkan layar pemenang. */
+function decideWinner(winner: 'host' | 'guest'): void {
+  matchStarted = false;
+  showWinnerScreen(winner);
+  // Tombol ganti karakter boleh muncul lagi setelah ada pemenang
+  $('btn-chars').style.display = '';
+}
+
+function showWinnerScreen(winner: 'host' | 'guest'): void {
+  const wc = winner === 'host' ? curHostChar : curGuestChar;
+  const wn = winner === 'host' ? hostUser : guestUser;
+  if (!wc) return;
+  ($('ws-img') as HTMLImageElement).src = wc.faceUrl;
+  $('ws-name').textContent = wn.toUpperCase();
+  $('ws-char').textContent = `${wc.name} · ${wc.typeName}`;
+  $('ws-score').textContent = `SKOR ${roundsHost} — ${roundsGuest} · BEST OF ${matchBo}`;
+  $('winner-screen').classList.add('open');
+}
+
+function updateScoreLabel(): void {
+  $('net-score').textContent = `BO${matchBo} · ${roundsHost} — ${roundsGuest}`;
 }
 
 function tryAttack(attacker: Fighter, victim: Fighter): void {
@@ -640,6 +692,7 @@ function applyCharacter(f: Fighter, c: CharacterDef): void {
 function startMatch(pick: CharacterDef): void {
   const others = CHARACTERS.filter((c) => c.id !== pick.id);
   const foe = others[Math.floor(Math.random() * others.length)] ?? pick;
+  roundOver = false;
   applyCharacter(player, pick);
   applyCharacter(enemy, foe);
   for (const p of projectiles) scene.remove(p.mesh);
@@ -707,6 +760,23 @@ let netRole: 'host' | 'guest' | '' = '';
 let guestJoined = false;
 let hostPick: CharacterDef | null = null;
 let guestPick: CharacterDef | null = null;
+/** Username sesi ini saja (hilang saat refresh — memang disengaja). */
+let myName = '';
+/** Username lawan dari pesan hello/pick/start. */
+let peerName = '';
+/** Best of yang dipilih host (1/3/5/7) & yang berlaku di match ini. */
+let bestOf = Number(localStorage.getItem('us-bestof') ?? 3) || 3;
+let matchBo = 3;
+let roundsHost = 0;
+let roundsGuest = 0;
+let matchTarget = 2;
+let matchDecided = false;
+/** Penjaga: satu ronde hanya boleh berakhir sekali (K.O. ganda). */
+let roundOver = false;
+let curHostChar: CharacterDef | null = null;
+let curGuestChar: CharacterDef | null = null;
+let hostUser = 'HOST';
+let guestUser = 'TAMU';
 let snapTimer = 0;
 let inputTimer = 0;
 let lastPingShown = -2;
@@ -813,7 +883,24 @@ function sendGuestInput(): void {
   net.sendGame('input', { wx: wish.x, wz: wish.z, mag, acts });
 }
 
-function startOnlineMatch(hc: CharacterDef, gc: CharacterDef): void {
+function startOnlineMatch(hc: CharacterDef, gc: CharacterDef, info?: { bo: number; hn: string; gn: string }): void {
+  curHostChar = hc;
+  curGuestChar = gc;
+  if (netRole === 'host') {
+    matchBo = bestOf;
+    hostUser = myName || 'HOST';
+    guestUser = peerName || 'TAMU';
+  } else if (info) {
+    matchBo = info.bo;
+    hostUser = info.hn || 'HOST';
+    guestUser = info.gn || myName || 'TAMU';
+  }
+  matchTarget = Math.floor(matchBo / 2) + 1;
+  roundsHost = 0;
+  roundsGuest = 0;
+  matchDecided = false;
+  roundOver = false;
+  updateScoreLabel();
   applyCharacter(player, hc);
   applyCharacter(enemy, gc);
   for (const p of projectiles) scene.remove(p.mesh);
@@ -825,24 +912,40 @@ function startOnlineMatch(hc: CharacterDef, gc: CharacterDef): void {
   player.reset(SPAWN_1, Math.PI / 2);
   enemy.reset(SPAWN_2, -Math.PI / 2);
   matchStarted = true;
+  $('winner-screen').classList.remove('open');
   $('char-select').classList.remove('open');
-  $('name1').textContent = `${hc.name} · ${hc.typeName}`;
-  $('name2').textContent = `${gc.name} · ${gc.typeName}`;
+  $('name1').textContent = hostUser.toUpperCase();
+  $('name2').textContent = guestUser.toUpperCase();
   const mine = netRole === 'guest' ? gc : hc;
   const tbLabel = document.querySelector('#tb-skill .tb-label');
   if (tbLabel) tbLabel.textContent = mine.skill.name.toUpperCase();
   $('net-hud').classList.add('on');
+  // Selama match online belum ada pemenang, tombol ganti karakter disembunyikan
+  $('btn-chars').style.display = 'none';
   showBanner('FIGHT!', 1.1);
+}
+
+/** Host: siarkan & mulai match dengan pilihan + username + best of saat ini. */
+function hostBeginMatch(): void {
+  if (!net || !hostPick || !guestPick) return;
+  hostUser = myName || 'HOST';
+  guestUser = peerName || 'TAMU';
+  matchBo = bestOf;
+  net.sendGame('start', { host: hostPick.id, guest: guestPick.id, bo: matchBo, hn: hostUser, gn: guestUser });
+  startOnlineMatch(hostPick, guestPick);
 }
 
 function maybeStartHost(): void {
   if (netRole !== 'host' || !net || !guestJoined || !hostPick || !guestPick) return;
-  net.sendGame('start', { host: hostPick.id, guest: guestPick.id });
-  startOnlineMatch(hostPick, guestPick);
+  hostBeginMatch();
 }
 
 function pickOnline(c: CharacterDef): void {
   if (!net) return;
+  if (myName.length === 0) {
+    setNetStatus('Isi USERNAME dulu untuk membuka pilihan karakter.');
+    return;
+  }
   if (netRole === 'host') {
     hostPick = c;
     if (guestJoined && guestPick) setNetStatus(`Kamu memilih ${c.name} — memulai pertarungan...`);
@@ -851,7 +954,7 @@ function pickOnline(c: CharacterDef): void {
     maybeStartHost();
   } else {
     guestPick = c;
-    net.sendGame('pick', { char: c.id });
+    net.sendGame('pick', { char: c.id, name: myName });
     setNetStatus(`Kamu memilih ${c.name}. Menunggu host memulai pertarungan...`);
   }
 }
@@ -860,6 +963,7 @@ function handleGameMsg(m: GameMsg): void {
   switch (m.kind) {
     case 'pick': {
       if (netRole !== 'host') break;
+      if (typeof m.name === 'string' && m.name) peerName = m.name.slice(0, 12);
       guestPick = CHARACTERS.find((c) => c.id === m.char) ?? null;
       if (guestPick) {
         setNetStatus(hostPick ? `Lawan memilih ${guestPick.name} — memulai...` : `Lawan memilih ${guestPick.name}. Giliranmu memilih karakter!`);
@@ -867,11 +971,50 @@ function handleGameMsg(m: GameMsg): void {
       }
       break;
     }
+    case 'hello': {
+      if (typeof m.name === 'string') peerName = m.name.slice(0, 12);
+      break;
+    }
+    case 'roominfo': {
+      if (netRole !== 'guest') break;
+      matchBo = Number(m.bo) || 3;
+      if (!matchStarted) setNetStatus(`Terhubung! Room ini BEST OF ${matchBo} — menangkan ${Math.floor(matchBo / 2) + 1} ronde untuk jadi pemenang. Pilih karaktermu.`);
+      break;
+    }
+    case 'score': {
+      if (netRole !== 'guest') break;
+      roundsHost = Number(m.h) || 0;
+      roundsGuest = Number(m.g) || 0;
+      updateScoreLabel();
+      break;
+    }
+    case 'matchwin': {
+      if (netRole !== 'guest') break;
+      roundsHost = Number(m.h) || 0;
+      roundsGuest = Number(m.g) || 0;
+      updateScoreLabel();
+      matchDecided = true;
+      decideWinner(m.winner === 'guest' ? 'guest' : 'host');
+      break;
+    }
+    case 'rematch': {
+      if (netRole !== 'host' || !matchDecided || !curHostChar || !curGuestChar) break;
+      hostPick = curHostChar;
+      guestPick = curGuestChar;
+      hostBeginMatch();
+      break;
+    }
     case 'start': {
       if (netRole !== 'guest') break;
       const hc = CHARACTERS.find((c) => c.id === m.host);
       const gc = CHARACTERS.find((c) => c.id === m.guest);
-      if (hc && gc) startOnlineMatch(hc, gc);
+      if (hc && gc) {
+        startOnlineMatch(hc, gc, {
+          bo: Number(m.bo) || 3,
+          hn: String(m.hn ?? ''),
+          gn: String(m.gn ?? ''),
+        });
+      }
       break;
     }
     case 'input': {
@@ -918,13 +1061,24 @@ function cleanupNet(): void {
   guestJoined = false;
   hostPick = null;
   guestPick = null;
+  peerName = '';
+  roundsHost = 0;
+  roundsGuest = 0;
+  matchDecided = false;
+  roundOver = false;
+  curHostChar = null;
+  curGuestChar = null;
   latestSnap = null;
   for (const [, m] of mirrorProjs) scene.remove(m);
   mirrorProjs.clear();
   $('net-hud').classList.remove('on');
+  $('net-score').textContent = '';
+  $('winner-screen').classList.remove('open');
+  $('btn-chars').style.display = '';
   $('char-select').classList.remove('online');
   $('btn-cancel-net').style.display = 'none';
   setNetStatus('');
+  refreshCardLocks();
 }
 
 function leaveOnlineToSelect(msg: string): void {
@@ -940,13 +1094,19 @@ function beginNet(role: 'host' | 'guest', code = ''): void {
   netRole = role;
   $('char-select').classList.add('online');
   $('btn-cancel-net').style.display = 'block';
+  refreshCardLocks();
 
   n.onCreated = (c) => {
     setNetStatus(`Bagikan kode ini ke lawanmu:<span class="room-code">${c}</span>Pilih karaktermu — pertarungan mulai saat lawan masuk & memilih juga.`);
   };
-  n.onJoined = () => setNetStatus('Terhubung ke room! Pilih karaktermu untuk mulai.');
+  n.onJoined = () => {
+    setNetStatus('Terhubung ke room! Pilih karaktermu untuk mulai.');
+    n.sendGame('hello', { name: myName });
+  };
   n.onPeerJoined = () => {
     guestJoined = true;
+    n.sendGame('hello', { name: myName });
+    n.sendGame('roominfo', { bo: bestOf });
     setNetStatus(hostPick ? 'Lawan masuk! Menunggu lawan memilih karakter...' : 'Lawan masuk! Pilih karaktermu — begitu lawan memilih, pertarungan mulai.');
     maybeStartHost();
   };
@@ -1006,6 +1166,58 @@ $('btn-cancel-net').addEventListener('click', () => {
   setNetStatus('Koneksi dibatalkan.');
 });
 $('btn-leave').addEventListener('click', () => {
+  leaveOnlineToSelect('Kamu keluar dari pertarungan online.');
+});
+
+// ============================================================ Username + best of + pemenang
+/** Kunci kartu (grayscale, tak bisa diketuk) selama online tanpa username. */
+function refreshCardLocks(): void {
+  const locked = !!net && myName.length === 0;
+  document.querySelectorAll<HTMLElement>('.char-card').forEach((el) => el.classList.toggle('locked', locked));
+  $('name-lock-note').style.display = locked ? 'block' : 'none';
+}
+
+const usernameInput = $('username-input') as HTMLInputElement;
+usernameInput.value = ''; // username cuma untuk sesi ini — refresh = hilang
+usernameInput.addEventListener('input', () => {
+  myName = usernameInput.value.trim().slice(0, 12);
+  refreshCardLocks();
+  if (net && !matchStarted) net.sendGame('hello', { name: myName });
+});
+
+const BESTOFS = [1, 3, 5, 7];
+function buildBestOfChips(): void {
+  const row = $('bo-row');
+  row.innerHTML = '';
+  for (const b of BESTOFS) {
+    const chip = document.createElement('button');
+    chip.className = 'diff-chip' + (b === bestOf ? ' sel' : '');
+    chip.style.setProperty('--c', '#ffd76a');
+    chip.innerHTML = `<span>BO${b}</span>`;
+    chip.addEventListener('click', () => {
+      bestOf = b;
+      localStorage.setItem('us-bestof', String(b));
+      buildBestOfChips();
+      if (netRole === 'host' && net && !matchStarted) net.sendGame('roominfo', { bo: bestOf });
+    });
+    row.appendChild(chip);
+  }
+}
+buildBestOfChips();
+
+$('btn-again').addEventListener('click', () => {
+  $('winner-screen').classList.remove('open');
+  if (netRole === 'host') {
+    hostPick = curHostChar;
+    guestPick = curGuestChar;
+    hostBeginMatch();
+  } else if (net) {
+    net.sendGame('rematch', {});
+    showBanner('MENUNGGU HOST', 1.4);
+  }
+});
+$('btn-ws-leave').addEventListener('click', () => {
+  $('winner-screen').classList.remove('open');
   leaveOnlineToSelect('Kamu keluar dari pertarungan online.');
 });
 
