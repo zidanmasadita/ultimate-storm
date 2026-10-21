@@ -56,6 +56,9 @@
       .diff-chip span { display: inline-block; transform: skewX(12deg); font-weight: 900; font-style: italic; font-size: 13px; letter-spacing: 1px; }
       .diff-chip:hover { transform: skewX(-12deg) translateY(-2px); }
       .diff-chip.sel { background: var(--c); color: #131a30; }
+      /* Pilihan MODE & JUMLAH PETARUNG: yang aktif berborder kuning */
+      #mode-row .diff-chip, #count-row .diff-chip { --c: #46538a; }
+      #mode-row .diff-chip.sel, #count-row .diff-chip.sel { background: rgba(255,215,106,.16); border-color: #ffd76a; color: #ffd76a; box-shadow: 0 0 10px rgba(255,215,106,.35); }
       /* ===== Online (room) ===== */
       #net-row { display: flex; gap: 10px; justify-content: center; align-items: stretch; margin-top: 8px; flex-wrap: wrap; }
       .net-btn { font: inherit; cursor: pointer; border: none; background: #274bdb; color: #fff; padding: 10px 16px; transform: skewX(-12deg); box-shadow: 0 6px 18px rgba(0,0,0,.45); }

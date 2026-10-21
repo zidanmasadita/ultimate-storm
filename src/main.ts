@@ -694,10 +694,13 @@ function driveFighter(f: Fighter, foe: Fighter, wish: THREE.Vector3, axisMag: nu
   const desired = moving ? wish.clone().multiplyScalar(speed) : new THREE.Vector3();
   if (f.dashTimer <= 0) steer(f, desired, dt);
 
-  // Hadap: arah gerak saat bergerak, selain itu hadap musuh (lock-on lembut)
+  // Hadap: arah gerak saat bergerak; selain itu hadap musuh (lock-on
+  // lembut) — KECUALI mode BRAWL: tanpa lock-on sama sekali, karakter
+  // mempertahankan arah hadap terakhirnya dan skill menembak lurus
+  // ke depan karakter.
   if (moving && f.dashTimer <= 0) {
     f.facing = turnToward(f.facing, Math.atan2(wish.x, wish.z), dt * 11);
-  } else {
+  } else if (!(gameMode === 'brawl' && !net)) {
     const toFoe = Math.atan2(foe.pos.x - f.pos.x, foe.pos.z - f.pos.z);
     f.facing = turnToward(f.facing, toFoe, dt * 8);
   }
@@ -744,6 +747,29 @@ function updateCamera(dt: number): void {
   const me = netRole === 'guest' ? enemy : player;
   // BRAWL: kamera mengunci musuh terdekat dari si pemain.
   const foe = netRole === 'guest' ? player : gameMode === 'brawl' && !net ? (nearestFoe(me) ?? enemy) : enemy;
+
+  // BRAWL (pemain masih hidup): kamera IKUTI dari belakang mengikuti
+  // arah hadap pemain — tanpa lock-on; titik pandang ke depan
+  // karakter. (Bila pemain sudah gugur, jatuh ke kamera penonton
+  // biasa di bawah yang membingkai musuh terdekat.)
+  if (gameMode === 'brawl' && !net && me.alive) {
+    const back = new THREE.Vector3(Math.sin(me.facing), 0, Math.cos(me.facing));
+    const behind = me.pos.clone().addScaledVector(back, -7.6).add(new THREE.Vector3(0, 3.4, 0));
+    behind.y = Math.max(behind.y, arena.ringTopY + 1.4);
+    camPos.x = THREE.MathUtils.damp(camPos.x, behind.x, 5, dt);
+    camPos.y = THREE.MathUtils.damp(camPos.y, behind.y, 5, dt);
+    camPos.z = THREE.MathUtils.damp(camPos.z, behind.z, 5, dt);
+    camera.position.copy(camPos);
+    if (shake > 0) {
+      shake = Math.max(0, shake - dt * 1.4);
+      camera.position.x += (Math.random() - 0.5) * shake * 0.5;
+      camera.position.y += (Math.random() - 0.5) * shake * 0.5;
+    }
+    const look = me.pos.clone().addScaledVector(back, 3.2).add(new THREE.Vector3(0, 1.35, 0));
+    camera.lookAt(look);
+    return;
+  }
+
   const toEnemy = foe.pos.clone().sub(me.pos);
   toEnemy.y = 0;
   const dist = Math.max(toEnemy.length(), 0.001);
