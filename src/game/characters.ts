@@ -24,6 +24,8 @@ export interface SkillDef {
   buffDuration?: number;
   /** Khusus proyektil: jarak musuh berpindah tempat ACAK saat kena (unit). */
   displace?: number;
+  /** Khusus proyektil: gerakan korban dikali factor selama duration detik. */
+  slow?: { factor: number; duration: number };
 }
 
 /** Basic attack jarak jauh (tipe Projectile): tembakan lurus searah hadap. */
@@ -201,6 +203,31 @@ export const CHARACTERS: CharacterDef[] = [
       projectileSpeed: 0,
       buffMultiplier: 1.8,
       buffDuration: 4,
+    },
+  },
+  {
+    id: 'jangkung',
+    name: 'JANGKUNG',
+    typeName: 'Penyihir',
+    epithet: 'Ksatria Naga Es',
+    chakraMax: 160, // spek penyihir seperti Omen & Wichy
+    chakraRegen: 14,
+    moveSpeedMul: 1.15,
+    meleeDamage: 6,
+    basicCooldown: 0.38, // putaran cepat khas penyihir
+    modelUrl: 'models/jangkung.glb',
+    faceUrl: 'faces/jangkung.jpg',
+    palette: { outfit: 0x2e5ea8, hair: 0x16283f, band: 0x7fd8ff },
+    accent: '#57b8ff',
+    skill: {
+      name: 'Pecahan Es',
+      kind: 'projectile',
+      chakraCost: 10,
+      damage: 6,
+      cooldown: 0.7, // cast cepat seperti penyihir lain
+      projectileColor: 0x7fd8ff,
+      projectileSpeed: 21,
+      slow: { factor: 0.5, duration: 2.5 }, // kena = gerakan lawan separuh kecepatan selama 2,5 detik
     },
   },
 ];

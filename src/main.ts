@@ -193,6 +193,8 @@ interface Projectile {
   damage: number;
   color: number;
   displace: number;
+  /** Efek lambat yang dibawa proyektil ini (null = tidak ada). */
+  slow: { factor: number; duration: number } | null;
   id: number;
 }
 let projSeq = 0;
@@ -201,11 +203,11 @@ const projGeo = new THREE.SphereGeometry(0.22, 16, 12);
 const basicGeo = new THREE.SphereGeometry(0.15, 12, 10);
 
 /** Lahirkan satu proyektil (dipakai skill & basic attack jarak jauh). */
-function spawnProjectile(owner: Fighter, target: Fighter | null, start: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, color: number, geo: THREE.BufferGeometry, displace = 0): void {
+function spawnProjectile(owner: Fighter, target: Fighter | null, start: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, color: number, geo: THREE.BufferGeometry, displace = 0, slow: { factor: number; duration: number } | null = null): void {
   const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color }));
   mesh.position.copy(start);
   scene.add(mesh);
-  projectiles.push({ mesh, vel: dir.clone().multiplyScalar(speed), life: 2.2, owner, target, damage, color, displace, id: ++projSeq });
+  projectiles.push({ mesh, vel: dir.clone().multiplyScalar(speed), life: 2.2, owner, target, damage, color, displace, slow, id: ++projSeq });
 }
 
 // ============================================================ Kontrol sentuh (mobile)
@@ -298,7 +300,7 @@ function castSkill(caster: Fighter, aimError = 0): void {
   // (Bot diberi aimError kecil supaya tembakannya bisa dihindari.)
   const aim = caster.facing + aimError;
   const dir = new THREE.Vector3(Math.sin(aim), 0, Math.cos(aim));
-  spawnProjectile(caster, null, start, dir, sk.projectileSpeed, sk.damage, sk.projectileColor, projGeo, sk.displace ?? 0);
+  spawnProjectile(caster, null, start, dir, sk.projectileSpeed, sk.damage, sk.projectileColor, projGeo, sk.displace ?? 0, sk.slow ?? null);
   effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
   if (netRole === 'host' && net) net.sendGame('cast', { x: start.x, y: start.y, z: start.z, c: sk.projectileColor });
 }
@@ -324,6 +326,12 @@ function updateProjectiles(dt: number): void {
     const hit = victim !== null;
     if (hit || p.life <= 0) {
       effects.burst(p.mesh.position, p.color, 30, 6, 0.55, 0.16);
+      if (hit && victim && p.slow) {
+        // ES JANGKUNG: gerakan korban melambat sementara.
+        victim.slowTimer = p.slow.duration;
+        victim.slowFactor = p.slow.factor;
+        effects.burst(victim.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), 0x7fd8ff, 20, 3.5, 0.45, 0.13);
+      }
       if (hit && victim && p.displace > 0) {
         // PORTAL: musuh langsung berpindah tempat ke ARAH ACAK di
         // sekitar titik kena (bukan knockback searah tembakan),
@@ -639,6 +647,8 @@ function updateBot(enemy: Fighter, dt: number): void {
     } else {
       desired.copy(toPlayer.clone().normalize().multiplyScalar(-WALK_SPEED * botDiff.speedMul * enemy.moveSpeedMul));
     }
+    // Efek lambat memperlambat seluruh vektor gerak yang diinginkan
+    if (enemy.slowTimer > 0) desired.multiplyScalar(enemy.slowFactor);
     steer(enemy, desired, dt);
   }
 
@@ -695,6 +705,7 @@ function integrate(f: Fighter, dt: number): void {
   f.dashCooldown = Math.max(0, f.dashCooldown - dt);
   f.skillCooldown = Math.max(0, f.skillCooldown - dt);
   f.buffTimer = Math.max(0, f.buffTimer - dt);
+  f.slowTimer = Math.max(0, f.slowTimer - dt);
   f.hitTimer = Math.max(0, f.hitTimer - dt);
   f.chakra = Math.min(f.chakraMax, f.chakra + f.chakraRegen * dt);
 
@@ -728,7 +739,7 @@ function driveFighter(f: Fighter, foe: Fighter, wish: THREE.Vector3, axisMag: nu
     effects.burst(f.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), 0x9fc1ff, 16, 2.5, 0.35, 0.12);
   }
 
-  const speed = f.dashTimer > 0 ? 17 : WALK_SPEED * f.moveSpeedMul * axisMag;
+  const speed = f.dashTimer > 0 ? 17 : WALK_SPEED * f.moveSpeedMul * axisMag * (f.slowTimer > 0 ? f.slowFactor : 1);
   const desired = moving ? wish.clone().multiplyScalar(speed) : new THREE.Vector3();
   if (f.dashTimer <= 0) steer(f, desired, dt);
 

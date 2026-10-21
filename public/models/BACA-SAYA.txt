@@ -1,3 +1,4 @@
 player1.glb (Omen) & player2.glb (Koboi): versi slim pengguna (tekstur identik, segitiga dipangkas 4x).
 ryu.glb: GLB asli pengguna 13,25 MB di-slim-kan Eve dgn gltf-transform (weld+simplify 0.28) -> 7,39 MB, 74rb segitiga, tekstur utuh. Asli tersimpan di unggahan user.
 Semua model dimuat di latar; game membuka instan dgn chibi lalu menukar model sesuai pilihan karakter.
+- `jangkung.glb` (7,79 MB — versi slim) — karakter JANGKUNG (tipe Penyihir es). File sumber user: `penjaga.glb` (10,36 MB, tanpa rig). Foto muka di `faces/jangkung.jpg` saat ini PLACEHOLDER kristal es — gambar asli user tidak tersimpan sebagai file di sisi Eve; menunggu kirim ulang untuk diganti crop aslinya.

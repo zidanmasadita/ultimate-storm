@@ -198,6 +198,9 @@ export class Fighter {
   /** Sisa waktu buff penguatan (detik) & pengali damagenya. */
   buffTimer = 0;
   buffMul = 1;
+  /** Sisa waktu efek lambat (detik) & pengali kecepatan geraknya. */
+  slowTimer = 0;
+  slowFactor = 1;
   /** Skill karakter yang sedang dimainkan (diatur layer pilih karakter). */
   skill: SkillDef = DEFAULT_SKILL;
   /** Id karakter roster yang sedang dimainkan ('' sebelum memilih). */
@@ -409,11 +412,14 @@ export class Fighter {
       inner.rotation.y = 0;
     }
 
-    // Berkedip merah saat kena; berpijar oranye berdenyut saat buff aktif
+    // Berkedip merah saat kena; biru es saat terlambat; berpijar
+    // oranye berdenyut saat buff aktif
     const flash = this.hitTimer > 0 ? 0.85 : 0;
     for (const m of this.materials) {
       if (flash > 0) {
         m.emissive.setRGB(flash, flash * 0.12, flash * 0.08);
+      } else if (this.slowTimer > 0) {
+        m.emissive.setRGB(0.22, 0.5, 0.8);
       } else if (this.buffTimer > 0) {
         const p = 0.5 + Math.sin(t * 10) * 0.18;
         m.emissive.setRGB(p, p * 0.3, p * 0.05);
@@ -442,6 +448,8 @@ export class Fighter {
     this.hitTimer = 0;
     this.buffTimer = 0;
     this.buffMul = 1;
+    this.slowTimer = 0;
+    this.slowFactor = 1;
   }
 }
 
