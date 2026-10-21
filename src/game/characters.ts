@@ -22,7 +22,7 @@ export interface SkillDef {
   buffMultiplier?: number;
   /** Khusus buff: lama buff (detik). */
   buffDuration?: number;
-  /** Khusus proyektil: jarak musuh berpindah tempat saat kena (unit). */
+  /** Khusus proyektil: jarak musuh berpindah tempat ACAK saat kena (unit). */
   displace?: number;
 }
 
@@ -154,7 +154,7 @@ export const CHARACTERS: CharacterDef[] = [
       cooldown: 0.7, // cast cepat seperti Omen
       projectileColor: 0xffa63c,
       projectileSpeed: 21,
-      displace: 2.2, // musuh berpindah 2,2 unit searah tembakan
+      displace: 2.2, // musuh berpindah ±2,2 unit ke ARAH ACAK saat kena
     },
   },
   {

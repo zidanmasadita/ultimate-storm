@@ -305,13 +305,14 @@ function updateProjectiles(dt: number): void {
     if (hit || p.life <= 0) {
       effects.burst(p.mesh.position, p.color, 30, 6, 0.55, 0.16);
       if (hit && p.displace > 0) {
-        // PORTAL: musuh langsung berpindah tempat searah tembakan
-        // (teleport pendek, bukan knockback), tetap di dalam ring.
+        // PORTAL: musuh langsung berpindah tempat ke ARAH ACAK di
+        // sekitar titik kena (bukan knockback searah tembakan),
+        // tetap di dalam ring.
         const before = p.target.pos.clone().add(new THREE.Vector3(0, 1.1, 0));
-        const step = p.vel.clone();
-        step.y = 0;
-        step.normalize().multiplyScalar(p.displace);
-        p.target.pos.add(step);
+        const ang = Math.random() * Math.PI * 2;
+        const distP = p.displace * (0.75 + Math.random() * 0.5);
+        p.target.pos.x += Math.sin(ang) * distP;
+        p.target.pos.z += Math.cos(ang) * distP;
         const r = Math.hypot(p.target.pos.x, p.target.pos.z);
         if (r > arena.playRadius) {
           p.target.pos.x *= arena.playRadius / r;
