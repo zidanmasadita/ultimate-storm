@@ -5,6 +5,7 @@ import { CHARACTERS, type CharacterDef } from './game/characters';
 import { DIFFICULTIES, type DifficultyDef } from './game/difficulty';
 import { Effects } from './game/effects';
 import { ACTION_LABELS, ActionId, DEFAULT_BINDS, Input, keyLabel, saveBinds } from './game/input';
+import { NetClient, type GameMsg } from './game/net';
 
 // ============================================================ Jaring pengaman error
 // Kegagalan apa pun ditampilkan di layar (kotak merah), bukan layar hitam diam.
@@ -186,7 +187,9 @@ interface Projectile {
   damage: number;
   color: number;
   displace: number;
+  id: number;
 }
+let projSeq = 0;
 const projectiles: Projectile[] = [];
 const projGeo = new THREE.SphereGeometry(0.22, 16, 12);
 
@@ -269,6 +272,7 @@ function castSkill(caster: Fighter, aimError = 0): void {
     caster.buffMul = sk.buffMultiplier ?? 1.5;
     const c = caster.pos.clone().add(new THREE.Vector3(0, 1.0, 0));
     effects.burst(c, sk.projectileColor, 30, 4.5, 0.5, 0.16);
+    if (netRole === 'host' && net) net.sendGame('cast', { x: c.x, y: c.y, z: c.z, c: sk.projectileColor });
     return;
   }
 
@@ -284,8 +288,9 @@ function castSkill(caster: Fighter, aimError = 0): void {
   const aim = caster.facing + aimError;
   const dir = new THREE.Vector3(Math.sin(aim), 0, Math.cos(aim));
   const foe = caster === player ? enemy : player;
-  projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target: foe, damage: sk.damage, color: sk.projectileColor, displace: sk.displace ?? 0 });
+  projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target: foe, damage: sk.damage, color: sk.projectileColor, displace: sk.displace ?? 0, id: ++projSeq });
   effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
+  if (netRole === 'host' && net) net.sendGame('cast', { x: start.x, y: start.y, z: start.z, c: sk.projectileColor });
 }
 
 function updateProjectiles(dt: number): void {
@@ -343,13 +348,16 @@ function applyHit(victim: Fighter, attacker: Fighter, damage: number, knock: num
   const chest = victim.pos.clone().add(new THREE.Vector3(0, 1.25, 0));
   effects.burst(chest, 0xffa347, 24, 5.5, 0.45, 0.15);
   shake = Math.min(shake + 0.22, 0.4);
+  if (netRole === 'host' && net) net.sendGame('hit', { x: chest.x, y: chest.y, z: chest.z });
 
   if (victim.hp <= 0) {
     showBanner('K.O.!', 1.6);
+    if (netRole === 'host' && net) net.sendGame('ko', {});
     setTimeout(() => {
       player.reset(SPAWN_1, Math.PI / 2);
       enemy.reset(SPAWN_2, -Math.PI / 2);
       showBanner('FIGHT!', 0.9);
+      if (netRole === 'host' && net) net.sendGame('fight', {});
     }, 1600);
   }
 }
@@ -509,6 +517,54 @@ function integrate(f: Fighter, dt: number): void {
 }
 
 // ============================================================ Kontrol pemain
+/** Aksi tepi (edge) untuk satu frame: dari input lokal atau paket jaringan. */
+interface DriveActs {
+  dash: boolean;
+  jump: boolean;
+  attack: boolean;
+  skill: boolean;
+}
+
+/**
+ * Jalankan satu petarung dari arah ingin (ruang dunia) + aksi.
+ * Dipakai pemain lokal (input sendiri) DAN musuh online (input tamu
+ * dari jaringan, di host) — satu jalur logika untuk keduanya.
+ */
+function driveFighter(f: Fighter, foe: Fighter, wish: THREE.Vector3, axisMag: number, acts: DriveActs, dt: number): void {
+  const moving = wish.lengthSq() > 0.001;
+
+  // Dash
+  if (acts.dash && f.dashCooldown <= 0) {
+    f.dashTimer = 0.18;
+    f.dashCooldown = 0.85;
+    const dir = moving ? wish.clone() : new THREE.Vector3(Math.sin(f.facing), 0, Math.cos(f.facing));
+    f.vel.copy(dir.multiplyScalar(17));
+    effects.burst(f.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), 0x9fc1ff, 16, 2.5, 0.35, 0.12);
+  }
+
+  const speed = f.dashTimer > 0 ? 17 : WALK_SPEED * f.moveSpeedMul * axisMag;
+  const desired = moving ? wish.clone().multiplyScalar(speed) : new THREE.Vector3();
+  if (f.dashTimer <= 0) steer(f, desired, dt);
+
+  // Hadap: arah gerak saat bergerak, selain itu hadap musuh (lock-on lembut)
+  if (moving && f.dashTimer <= 0) {
+    f.facing = turnToward(f.facing, Math.atan2(wish.x, wish.z), dt * 11);
+  } else {
+    const toFoe = Math.atan2(foe.pos.x - f.pos.x, foe.pos.z - f.pos.z);
+    f.facing = turnToward(f.facing, toFoe, dt * 8);
+  }
+
+  // Lompat
+  if (acts.jump && f.grounded) {
+    f.vy = 9.2;
+    f.grounded = false;
+  }
+
+  // Serangan & jurus
+  if (acts.attack) tryAttack(f, foe);
+  if (acts.skill) castSkill(f);
+}
+
 function updatePlayer(dt: number): void {
   const axis = input.moveAxis();
   // Arah kamera di bidang tanah (untuk gerak relatif kamera)
@@ -521,52 +577,30 @@ function updatePlayer(dt: number): void {
   const wish = new THREE.Vector3()
     .addScaledVector(camFwd, -axis.z)
     .addScaledVector(camRight, -axis.x);
-  const moving = wish.lengthSq() > 0.001;
-  if (moving) wish.normalize();
+  if (wish.lengthSq() > 0.001) wish.normalize();
   // Magnitud analog: dorongan kecil pada joystick = jalan pelan (keyboard selalu 1)
   const axisMag = Math.min(1, Math.hypot(axis.x, axis.z));
 
-  // Dash
-  if (input.consume('dash') && player.dashCooldown <= 0) {
-    player.dashTimer = 0.18;
-    player.dashCooldown = 0.85;
-    const dir = moving ? wish.clone() : new THREE.Vector3(Math.sin(player.facing), 0, Math.cos(player.facing));
-    player.vel.copy(dir.multiplyScalar(17));
-    effects.burst(player.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), 0x9fc1ff, 16, 2.5, 0.35, 0.12);
-  }
-
-  const speed = player.dashTimer > 0 ? 17 : WALK_SPEED * player.moveSpeedMul * axisMag;
-  const desired = moving ? wish.clone().multiplyScalar(speed) : new THREE.Vector3();
-  if (player.dashTimer <= 0) steer(player, desired, dt);
-
-  // Hadap: arah gerak saat bergerak, selain itu hadap musuh (lock-on lembut)
-  if (moving && player.dashTimer <= 0) {
-    player.facing = turnToward(player.facing, Math.atan2(wish.x, wish.z), dt * 11);
-  } else {
-    const toEnemy = Math.atan2(enemy.pos.x - player.pos.x, enemy.pos.z - player.pos.z);
-    player.facing = turnToward(player.facing, toEnemy, dt * 8);
-  }
-
-  // Lompat
-  if (input.consume('jump') && player.grounded) {
-    player.vy = 9.2;
-    player.grounded = false;
-  }
-
-  // Serangan & jurus
-  if (input.consume('attack')) tryAttack(player, enemy);
-  if (input.consume('skill')) castSkill(player);
+  driveFighter(player, enemy, wish, axisMag, {
+    dash: input.consume('dash'),
+    jump: input.consume('jump'),
+    attack: input.consume('attack'),
+    skill: input.consume('skill'),
+  }, dt);
 }
 
 // ============================================================ Kamera lock-on ala Storm
 const camPos = new THREE.Vector3(0, 5.5, 13);
 function updateCamera(dt: number): void {
-  const toEnemy = enemy.pos.clone().sub(player.pos);
+  // Di mode online tamu, "aku" adalah petarung kedua (enemy).
+  const me = netRole === 'guest' ? enemy : player;
+  const foe = netRole === 'guest' ? player : enemy;
+  const toEnemy = foe.pos.clone().sub(me.pos);
   toEnemy.y = 0;
   const dist = Math.max(toEnemy.length(), 0.001);
   toEnemy.normalize();
 
-  const behind = player.pos.clone().addScaledVector(toEnemy, -7.6).add(new THREE.Vector3(0, 3.4, 0));
+  const behind = me.pos.clone().addScaledVector(toEnemy, -7.6).add(new THREE.Vector3(0, 3.4, 0));
   behind.y = Math.max(behind.y, arena.ringTopY + 1.4);
   camPos.x = THREE.MathUtils.damp(camPos.x, behind.x, 5, dt);
   camPos.y = THREE.MathUtils.damp(camPos.y, behind.y, 5, dt);
@@ -631,7 +665,10 @@ function buildCharCards(): void {
     card.innerHTML =
       `<span class="cc-face"><img src="${c.faceUrl}" alt="${c.name}"></span>` +
       `<span class="cc-name">${c.name}</span>`;
-    card.addEventListener('click', () => startMatch(c));
+    card.addEventListener('click', () => {
+      if (net) pickOnline(c);
+      else startMatch(c);
+    });
     wrap.appendChild(card);
   }
 }
@@ -656,8 +693,319 @@ function buildDiffChips(): void {
 buildDiffChips();
 $('char-select').classList.add('open');
 $('btn-chars').addEventListener('click', () => {
+  if (net) cleanupNet();
   matchStarted = false;
   $('char-select').classList.add('open');
+});
+
+// ============================================================ Mode online 1v1
+// Host-authoritative: browser host menjalankan simulasi; tamu
+// mengirim input & menggambar dari snapshot host (20x/detik).
+let net: NetClient | null = null;
+let netRole: 'host' | 'guest' | '' = '';
+let guestJoined = false;
+let hostPick: CharacterDef | null = null;
+let guestPick: CharacterDef | null = null;
+let snapTimer = 0;
+let inputTimer = 0;
+let lastPingShown = -2;
+
+/** Input tamu terakhir yang diterima host. */
+const remote = { wx: 0, wz: 0, mag: 0, acts: new Set<string>() };
+
+type SnapF = [number, number, number, number, number, number, number, number, number, number, number, number];
+type SnapP = [number, number, number, number, number];
+interface SnapMsg {
+  a: SnapF;
+  b: SnapF;
+  pr: SnapP[];
+}
+let latestSnap: SnapMsg | null = null;
+const mirrorProjs = new Map<number, THREE.Mesh>();
+const mirrorGeo = new THREE.SphereGeometry(0.3, 14, 12);
+
+function snapFighter(f: Fighter): SnapF {
+  return [
+    f.pos.x, f.pos.y, f.pos.z, f.vel.x, f.vel.z, f.facing,
+    f.hp, f.chakra, f.attackTimer, f.dashTimer, f.hitTimer, f.buffTimer,
+  ];
+}
+
+function broadcastSnap(): void {
+  if (!net) return;
+  net.sendGame('snap', {
+    a: snapFighter(player),
+    b: snapFighter(enemy),
+    pr: projectiles.map((p): SnapP => [p.id, p.mesh.position.x, p.mesh.position.y, p.mesh.position.z, p.color]),
+  });
+}
+
+function applySnapFighter(f: Fighter, s: SnapF, dt: number): void {
+  const k = 1 - Math.exp(-dt * 22);
+  f.pos.x += (s[0] - f.pos.x) * k;
+  f.pos.y += (s[1] - f.pos.y) * k;
+  f.pos.z += (s[2] - f.pos.z) * k;
+  f.vel.set(s[3], 0, s[4]);
+  f.facing = turnToward(f.facing, s[5], dt * 22);
+  f.hp = s[6];
+  f.chakra = s[7];
+  f.attackTimer = s[8];
+  f.dashTimer = s[9];
+  f.hitTimer = s[10];
+  f.buffTimer = s[11];
+  f.grounded = s[1] <= arena.ringTopY + 0.02;
+  f.animate(dt, perfTime, Math.hypot(f.vel.x, f.vel.z));
+}
+
+function applySnapProjectiles(list: SnapP[]): void {
+  const seen = new Set<number>();
+  for (const [id, x, y, z, c] of list) {
+    seen.add(id);
+    let m = mirrorProjs.get(id);
+    if (!m) {
+      m = new THREE.Mesh(mirrorGeo, new THREE.MeshBasicMaterial({ color: c }));
+      scene.add(m);
+      mirrorProjs.set(id, m);
+    }
+    m.position.set(x, y, z);
+  }
+  for (const [id, m] of [...mirrorProjs]) {
+    if (!seen.has(id)) {
+      scene.remove(m);
+      (m.material as THREE.Material).dispose();
+      mirrorProjs.delete(id);
+    }
+  }
+}
+
+/** Host: jalankan petarung tamu dari input jaringan terakhir. */
+function driveRemote(dt: number): void {
+  const acts: DriveActs = {
+    dash: remote.acts.has('dash'),
+    jump: remote.acts.has('jump'),
+    attack: remote.acts.has('attack'),
+    skill: remote.acts.has('skill'),
+  };
+  remote.acts.clear();
+  driveFighter(enemy, player, new THREE.Vector3(remote.wx, 0, remote.wz), remote.mag, acts, dt);
+}
+
+/** Tamu: kirim input lokal (arah sudah dalam ruang dunia) ke host. */
+function sendGuestInput(): void {
+  if (!net) return;
+  const axis = input.moveAxis();
+  const camFwd = new THREE.Vector3();
+  camera.getWorldDirection(camFwd);
+  camFwd.y = 0;
+  camFwd.normalize();
+  const camRight = new THREE.Vector3().crossVectors(camFwd, new THREE.Vector3(0, 1, 0)).negate();
+  const wish = new THREE.Vector3()
+    .addScaledVector(camFwd, -axis.z)
+    .addScaledVector(camRight, -axis.x);
+  const mag = Math.min(1, Math.hypot(axis.x, axis.z));
+  if (wish.lengthSq() > 0.001) wish.normalize();
+  const acts: string[] = [];
+  if (input.consume('dash')) acts.push('dash');
+  if (input.consume('jump')) acts.push('jump');
+  if (input.consume('attack')) acts.push('attack');
+  if (input.consume('skill')) acts.push('skill');
+  net.sendGame('input', { wx: wish.x, wz: wish.z, mag, acts });
+}
+
+function startOnlineMatch(hc: CharacterDef, gc: CharacterDef): void {
+  applyCharacter(player, hc);
+  applyCharacter(enemy, gc);
+  for (const p of projectiles) scene.remove(p.mesh);
+  projectiles.length = 0;
+  for (const [, m] of mirrorProjs) scene.remove(m);
+  mirrorProjs.clear();
+  latestSnap = null;
+  remote.acts.clear();
+  player.reset(SPAWN_1, Math.PI / 2);
+  enemy.reset(SPAWN_2, -Math.PI / 2);
+  matchStarted = true;
+  $('char-select').classList.remove('open');
+  $('name1').textContent = `${hc.name} · ${hc.typeName}`;
+  $('name2').textContent = `${gc.name} · ${gc.typeName}`;
+  const mine = netRole === 'guest' ? gc : hc;
+  const tbLabel = document.querySelector('#tb-skill .tb-label');
+  if (tbLabel) tbLabel.textContent = mine.skill.name.toUpperCase();
+  $('net-hud').classList.add('on');
+  showBanner('FIGHT!', 1.1);
+}
+
+function maybeStartHost(): void {
+  if (netRole !== 'host' || !net || !guestJoined || !hostPick || !guestPick) return;
+  net.sendGame('start', { host: hostPick.id, guest: guestPick.id });
+  startOnlineMatch(hostPick, guestPick);
+}
+
+function pickOnline(c: CharacterDef): void {
+  if (!net) return;
+  if (netRole === 'host') {
+    hostPick = c;
+    if (guestJoined && guestPick) setNetStatus(`Kamu memilih ${c.name} — memulai pertarungan...`);
+    else if (guestJoined) setNetStatus(`Kamu memilih ${c.name}. Menunggu lawan memilih karakter...`);
+    else setNetStatus(`Kamu memilih ${c.name}.<span class="room-code">${net.code}</span>Bagikan kode ini ke lawanmu — pertarungan mulai saat dia masuk & memilih.`);
+    maybeStartHost();
+  } else {
+    guestPick = c;
+    net.sendGame('pick', { char: c.id });
+    setNetStatus(`Kamu memilih ${c.name}. Menunggu host memulai pertarungan...`);
+  }
+}
+
+function handleGameMsg(m: GameMsg): void {
+  switch (m.kind) {
+    case 'pick': {
+      if (netRole !== 'host') break;
+      guestPick = CHARACTERS.find((c) => c.id === m.char) ?? null;
+      if (guestPick) {
+        setNetStatus(hostPick ? `Lawan memilih ${guestPick.name} — memulai...` : `Lawan memilih ${guestPick.name}. Giliranmu memilih karakter!`);
+        maybeStartHost();
+      }
+      break;
+    }
+    case 'start': {
+      if (netRole !== 'guest') break;
+      const hc = CHARACTERS.find((c) => c.id === m.host);
+      const gc = CHARACTERS.find((c) => c.id === m.guest);
+      if (hc && gc) startOnlineMatch(hc, gc);
+      break;
+    }
+    case 'input': {
+      if (netRole !== 'host') break;
+      remote.wx = Number(m.wx) || 0;
+      remote.wz = Number(m.wz) || 0;
+      remote.mag = Number(m.mag) || 0;
+      for (const a of (m.acts as string[] | undefined) ?? []) remote.acts.add(a);
+      break;
+    }
+    case 'snap':
+      if (netRole === 'guest') latestSnap = m as unknown as SnapMsg;
+      break;
+    case 'hit':
+      if (netRole === 'guest') {
+        effects.burst(new THREE.Vector3(Number(m.x), Number(m.y), Number(m.z)), 0xffa347, 24, 5.5, 0.45, 0.15);
+      }
+      break;
+    case 'cast':
+      if (netRole === 'guest') {
+        effects.burst(new THREE.Vector3(Number(m.x), Number(m.y), Number(m.z)), Number(m.c) || 0xffffff, 18, 3.5, 0.4, 0.13);
+      }
+      break;
+    case 'ko':
+      if (netRole === 'guest') {
+        showBanner('K.O.!', 1.6);
+        shake = Math.min(shake + 0.35, 0.45);
+      }
+      break;
+    case 'fight':
+      if (netRole === 'guest') showBanner('FIGHT!', 0.9);
+      break;
+  }
+}
+
+function setNetStatus(html: string): void {
+  $('net-status').innerHTML = html;
+}
+
+function cleanupNet(): void {
+  if (net) net.close();
+  net = null;
+  netRole = '';
+  guestJoined = false;
+  hostPick = null;
+  guestPick = null;
+  latestSnap = null;
+  for (const [, m] of mirrorProjs) scene.remove(m);
+  mirrorProjs.clear();
+  $('net-hud').classList.remove('on');
+  $('char-select').classList.remove('online');
+  $('btn-cancel-net').style.display = 'none';
+  setNetStatus('');
+}
+
+function leaveOnlineToSelect(msg: string): void {
+  matchStarted = false;
+  cleanupNet();
+  $('char-select').classList.add('open');
+  setNetStatus(msg);
+}
+
+function beginNet(role: 'host' | 'guest', code = ''): void {
+  const n = new NetClient();
+  net = n;
+  netRole = role;
+  $('char-select').classList.add('online');
+  $('btn-cancel-net').style.display = 'block';
+
+  n.onCreated = (c) => {
+    setNetStatus(`Bagikan kode ini ke lawanmu:<span class="room-code">${c}</span>Pilih karaktermu — pertarungan mulai saat lawan masuk & memilih juga.`);
+  };
+  n.onJoined = () => setNetStatus('Terhubung ke room! Pilih karaktermu untuk mulai.');
+  n.onPeerJoined = () => {
+    guestJoined = true;
+    setNetStatus(hostPick ? 'Lawan masuk! Menunggu lawan memilih karakter...' : 'Lawan masuk! Pilih karaktermu — begitu lawan memilih, pertarungan mulai.');
+    maybeStartHost();
+  };
+  n.onGame = (m) => handleGameMsg(m);
+  n.onPeerLeft = () => {
+    if (matchStarted) {
+      showBanner('LAWAN TERPUTUS', 1.4);
+      leaveOnlineToSelect('Lawan terputus dari pertarungan.');
+    } else if (netRole === 'host') {
+      guestJoined = false;
+      guestPick = null;
+      setNetStatus(`Lawan keluar dari room.<span class="room-code">${n.code}</span>Kode masih berlaku — tunggu lawan lain, atau batalkan.`);
+    } else {
+      leaveOnlineToSelect('Host menutup room.');
+    }
+  };
+  n.onClose = () => {
+    if (!net) return;
+    if (matchStarted) leaveOnlineToSelect('Koneksi ke server terputus.');
+    else {
+      cleanupNet();
+      setNetStatus('Koneksi terputus. Coba lagi.');
+    }
+  };
+  n.onError = (msg) => {
+    if (!matchStarted) setNetStatus(msg);
+  };
+
+  n.connect(role === 'host' ? 'create' : 'join', code);
+}
+
+$('btn-create').addEventListener('click', () => {
+  if (net) return;
+  if (!NetClient.serverUrl()) {
+    setNetStatus('Server online belum dikonfigurasi. Deploy dulu server relay-nya (folder server/), lalu buka game dengan ?server= atau set VITE_WS_URL.');
+    return;
+  }
+  setNetStatus('Membuat room...');
+  beginNet('host');
+});
+$('btn-join').addEventListener('click', () => {
+  if (net) return;
+  const code = ($('join-code') as HTMLInputElement).value.trim().toUpperCase();
+  if (code.length !== 4) {
+    setNetStatus('Masukkan kode room 4 huruf dulu.');
+    return;
+  }
+  if (!NetClient.serverUrl()) {
+    setNetStatus('Server online belum dikonfigurasi. Deploy dulu server relay-nya (folder server/), lalu buka game dengan ?server= atau set VITE_WS_URL.');
+    return;
+  }
+  setNetStatus('Menghubungi room...');
+  beginNet('guest', code);
+});
+$('btn-cancel-net').addEventListener('click', () => {
+  cleanupNet();
+  setNetStatus('Koneksi dibatalkan.');
+});
+$('btn-leave').addEventListener('click', () => {
+  leaveOnlineToSelect('Kamu keluar dari pertarungan online.');
 });
 
 // ============================================================ Loop
@@ -670,12 +1018,37 @@ function tick(): void {
   const dt = Math.min(clock.getDelta(), 0.05);
   perfTime += dt;
 
-  if (matchStarted) {
+  if (netRole === 'guest') {
+    // TAMU: tanpa simulasi lokal — kirim input, gambar dari snapshot host.
+    if (matchStarted) {
+      inputTimer += dt;
+      if (inputTimer >= 1 / 30) {
+        inputTimer = 0;
+        sendGuestInput();
+      }
+      if (latestSnap) {
+        applySnapFighter(player, latestSnap.a, dt);
+        applySnapFighter(enemy, latestSnap.b, dt);
+        applySnapProjectiles(latestSnap.pr);
+      }
+    } else {
+      player.animate(dt, perfTime, 0);
+      enemy.animate(dt, perfTime, 0);
+    }
+  } else if (matchStarted) {
     updatePlayer(dt);
-    updateEnemy(dt);
+    if (netRole === 'host') driveRemote(dt);
+    else updateEnemy(dt);
     integrate(player, dt);
     integrate(enemy, dt);
     updateProjectiles(dt);
+    if (netRole === 'host') {
+      snapTimer += dt;
+      if (snapTimer >= 0.05) {
+        snapTimer = 0;
+        broadcastSnap();
+      }
+    }
   } else {
     // Di layer pilih karakter: petarung diam beranimasi idle.
     player.animate(dt, perfTime, 0);
@@ -696,6 +1069,10 @@ function tick(): void {
 
   input.endFrame();
   renderer.render(scene, camera);
+  if (net && net.pingMs !== lastPingShown) {
+    lastPingShown = net.pingMs;
+    $('net-ping').textContent = net.pingMs >= 0 ? `PING ${net.pingMs} MS` : 'ONLINE';
+  }
   if (frameCount === 0) {
     // Frame pertama tergambar -> singkirkan layar muat statis.
     const splash = document.getElementById('boot-splash');

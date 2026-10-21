@@ -54,6 +54,24 @@
       .diff-chip span { display: inline-block; transform: skewX(12deg); font-weight: 900; font-style: italic; font-size: 13px; letter-spacing: 1px; }
       .diff-chip:hover { transform: skewX(-12deg) translateY(-2px); }
       .diff-chip.sel { background: var(--c); color: #131a30; }
+      /* ===== Online (room) ===== */
+      #net-row { display: flex; gap: 10px; justify-content: center; align-items: stretch; margin-top: 8px; flex-wrap: wrap; }
+      .net-btn { font: inherit; cursor: pointer; border: none; background: #274bdb; color: #fff; padding: 10px 16px; transform: skewX(-12deg); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+      .net-btn span { display: inline-block; transform: skewX(12deg); font-size: 13px; font-weight: 900; font-style: italic; letter-spacing: 1px; }
+      .net-btn:active { transform: skewX(-12deg) scale(.96); }
+      #join-wrap { display: inline-flex; gap: 8px; }
+      #join-code { font: inherit; width: 92px; text-align: center; text-transform: uppercase; font-weight: 900; letter-spacing: 3px; font-size: 15px; color: #fff; background: rgba(10,14,28,.85); border: 2px solid #3d5af1; outline: none; transform: skewX(-12deg); }
+      #join-code::placeholder { color: #5f6fa8; letter-spacing: 2px; }
+      #net-status { margin-top: 12px; min-height: 20px; font-size: 13.5px; font-weight: 700; color: #cfe0ff; text-shadow: 0 2px 8px rgba(0,0,0,.8); }
+      #net-status .room-code { display: block; font-size: 40px; font-weight: 900; font-style: italic; letter-spacing: 8px; color: #ffd76a; margin: 2px 0; }
+      #btn-cancel-net { display: none; font: inherit; cursor: pointer; margin: 10px auto 0; background: rgba(20,24,44,.9); color: #ff9a8a; border: 1px solid #7a3a32; padding: 7px 14px; transform: skewX(-12deg); }
+      #btn-cancel-net span { display: inline-block; transform: skewX(12deg); font-size: 11.5px; font-weight: 800; letter-spacing: 1px; }
+      #char-select.online #diff-row, #char-select.online #diff-label { display: none; }
+      #net-hud { display: none; position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 46; gap: 8px; align-items: center; }
+      #net-hud.on { display: flex; }
+      #net-ping { font: 700 11px ui-monospace, monospace; color: #9fe870; background: rgba(0,0,0,.6); padding: 5px 8px; border-radius: 5px; }
+      #net-hud button { font: inherit; cursor: pointer; font-size: 11.5px; font-weight: 800; letter-spacing: .5px; color: #fff; background: rgba(16,20,38,.85); border: 1px solid #46538c; padding: 6px 11px; border-radius: 6px; }
+      #btn-rematch { display: none; background: #274bdb !important; border-color: #274bdb !important; }
       .char-card { --accent: #fff; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px; background: none; border: 0; color: #eef2ff; cursor: pointer; font-family: inherit; transition: transform .12s; }
       .char-card:hover, .char-card:active { transform: translateY(-4px) scale(1.03); }
       /* Jajar genjang berisi muka karakter; lapisan luar = bingkai aksen */
@@ -158,12 +176,20 @@
     <div id="char-select">
       <div class="cs-panel">
         <div class="cs-title">PILIH KARAKTERMU</div>
-        <div class="cs-diff-label">LEVEL BOT</div>
+        <div class="cs-diff-label" id="diff-label">LEVEL BOT</div>
         <div id="diff-row"></div>
+        <div class="cs-diff-label">— ATAU MAIN ONLINE 1V1 —</div>
+        <div id="net-row">
+          <button class="net-btn" id="btn-create"><span>BUAT ROOM</span></button>
+          <span id="join-wrap"><input id="join-code" maxlength="4" placeholder="KODE" autocomplete="off" /><button class="net-btn" id="btn-join"><span>GABUNG</span></button></span>
+        </div>
+        <div id="net-status"></div>
+        <button id="btn-cancel-net"><span>BATALKAN KONEKSI</span></button>
         <div id="char-cards"></div>
       </div>
     </div>
 
+    <div id="net-hud"><span id="net-ping">ONLINE</span><button id="btn-rematch">MAIN LAGI</button><button id="btn-leave">KELUAR</button></div>
     <div id="rotate-overlay">
       <div class="phone"></div>
       <h2>PUTAR PERANGKATMU</h2>
