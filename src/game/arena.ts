@@ -36,7 +36,10 @@ export function buildArena(scene: THREE.Scene, opts?: { shadowMapSize?: number }
   sun.shadow.camera.bottom = -22;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 90;
-  sun.shadow.bias = -0.0004;
+  sun.shadow.bias = -0.0002;
+  // Anti shadow-acne: tanpa ini, lantai datar sudut landai penuh garis
+  // berkedip (artefak self-shadowing). Geser sampel sepanjang normal.
+  sun.shadow.normalBias = 0.04;
   scene.add(sun);
 
   // Lantai ring (warna polos, tanpa tekstur)
