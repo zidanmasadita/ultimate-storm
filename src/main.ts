@@ -1132,6 +1132,47 @@ cardsEl.addEventListener(
 window.addEventListener('resize', updateCardZoom);
 requestAnimationFrame(updateCardZoom);
 
+// Seret pakai kursor mouse untuk menggeser carousel mendatar
+// (sentuh sudah bisa scroll bawaan). Seretan melewati ambang 6px
+// menelan klik berikutnya agar tidak ikut memilih karakter.
+{
+  let dragging = false;
+  let moved = false;
+  let startX = 0;
+  let startScroll = 0;
+  cardsEl.style.cursor = 'grab';
+  cardsEl.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    dragging = true;
+    moved = false;
+    startX = e.clientX;
+    startScroll = cardsEl.scrollLeft;
+    cardsEl.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 6) moved = true;
+    cardsEl.scrollLeft = startScroll - dx;
+  });
+  window.addEventListener('pointerup', () => {
+    dragging = false;
+    cardsEl.style.cursor = 'grab';
+  });
+  cardsEl.addEventListener(
+    'click',
+    (e) => {
+      if (moved) {
+        e.stopPropagation();
+        e.preventDefault();
+        moved = false;
+      }
+    },
+    true,
+  );
+}
+
 function buildDiffChips(): void {
   const row = $('diff-row');
   row.innerHTML = '';
