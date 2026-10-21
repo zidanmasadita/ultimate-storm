@@ -139,45 +139,6 @@
         <div id="char-cards"></div>
       </div>
     </div>
-    <div id="buildtag" style="position:fixed;right:8px;top:44px;z-index:60;color:#ffd76a;font:11px ui-monospace,monospace;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px">build char-3</div>
-    <div id="diagpanel" style="position:fixed;left:8px;top:120px;z-index:60;color:#9fe870;font:11px/1.55 ui-monospace,monospace;background:rgba(0,0,0,.78);padding:7px 9px;border-radius:6px;white-space:pre">memeriksa...</div>
-    <script>
-      // Panel diagnostik INDEPENDEN (bukan bagian modul game): tetap bersuara
-      // walau modul JS mati total. Memeriksa keadaan halaman tiap detik.
-      (function () {
-        var panel = document.getElementById('diagpanel');
-        function probeGL() {
-          try {
-            var c = document.createElement('canvas');
-            var gl = c.getContext('webgl2');
-            if (!gl) return 'webgl2: TIDAK ADA';
-            var ext = gl.getExtension('WEBGL_debug_renderer_info');
-            var r = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
-            return 'webgl2: ada · ' + r;
-          } catch (e) {
-            return 'webgl2: error ' + e.message;
-          }
-        }
-        var glInfo = probeGL();
-        setInterval(function () {
-          var canvas = document.querySelector('#app canvas');
-          var lines = [];
-          lines.push('build char-3 · panel mandiri');
-          lines.push('canvas: ' + (canvas ? 'ada ' + canvas.width + 'x' + canvas.height : 'TIDAK ADA'));
-          lines.push('game booted: ' + (window.__gameBooted ? 'YA' : 'belum'));
-          lines.push(glInfo);
-          panel.textContent = lines.join('\n');
-        }, 1000);
-        // Watchdog: kalau modul game tidak mulai dalam 7 detik, tampilkan sebabnya.
-        setTimeout(function () {
-          if (!window.__gameBooted) {
-            var el = document.getElementById('fatal');
-            el.style.display = 'block';
-            el.textContent = 'Game tidak mulai dalam 7 detik (build char-3). Modul JS gagal jalan di browser ini.';
-          }
-        }, 7000);
-      })();
-    </script>
 
     <div id="rotate-overlay">
       <div class="phone"></div>

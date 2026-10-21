@@ -663,17 +663,7 @@ $('btn-chars').addEventListener('click', () => {
 // ============================================================ Loop
 let perfTime = 0;
 const clock = new THREE.Clock();
-
-// ============================================================ Panel diagnostik
-// Menampilkan keadaan renderer yang sebenarnya di perangkat pengguna.
-const debugEl = document.createElement('div');
-debugEl.style.cssText =
-  'position:fixed;left:8px;bottom:8px;z-index:40;background:rgba(0,0,0,.72);color:#9fe870;' +
-  'font:11px/1.5 ui-monospace,monospace;padding:6px 9px;border-radius:6px;white-space:pre;pointer-events:none';
-document.body.appendChild(debugEl);
 let frameCount = 0;
-let lastCalls = -1;
-let lastTris = 0;
 
 function tick(): void {
   requestAnimationFrame(tick);
@@ -706,39 +696,14 @@ function tick(): void {
 
   input.endFrame();
   renderer.render(scene, camera);
-  (window as unknown as { __gameBooted?: boolean }).__gameBooted = true;
   if (frameCount === 0) {
     // Frame pertama tergambar -> singkirkan layar muat statis.
     const splash = document.getElementById('boot-splash');
     if (splash) splash.style.display = 'none';
   }
-
   frameCount++;
-  lastCalls = renderer.info.render.calls;
-  lastTris = renderer.info.render.triangles;
-  if (frameCount % 30 === 0) {
-    const gl = renderer.getContext();
-    debugEl.textContent =
-      `draw ${lastCalls} · tri ${(lastTris / 1000).toFixed(0)}k · frame ${frameCount}\n` +
-      `model dimuat: ${modelCache.size}/${CHARACTERS.length} · P1 ${player.charId || '-'} · P2 ${enemy.charId || '-'} · bot ${botDiff.name}\n` +
-      `ctx lost: ${gl.isContextLost()} · canvas ${renderer.domElement.width}x${renderer.domElement.height}\n` +
-      `mode: ${LIGHT_MODE ? 'RINGAN' : 'normal'}`;
-  }
 }
 tick();
-
-// Penyelamat otomatis: loop jalan tapi renderer menggambar NOL objek →
-// muat ulang sekali dalam mode ringan; bila tetap nol, bersuara.
-setTimeout(() => {
-  if (frameCount > 30 && lastCalls === 0) {
-    if (!LIGHT_MODE) {
-      sessionStorage.setItem('us-ringan', '1');
-      location.reload();
-    } else {
-      showFatal('Renderer berjalan tapi tidak menggambar satu objek pun di perangkat ini, bahkan dalam mode ringan.');
-    }
-  }
-}, 5000);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
