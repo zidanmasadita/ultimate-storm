@@ -67,7 +67,7 @@
       #net-status { margin-top: 12px; min-height: 20px; font-size: 13.5px; font-weight: 700; color: #cfe0ff; text-shadow: 0 2px 8px rgba(0,0,0,.8); }
       #net-status .room-code { display: block; font-size: 40px; font-weight: 900; font-style: italic; letter-spacing: 8px; color: #ffd76a; margin: 2px 0; }
       #btn-cancel-net { display: none; font: inherit; cursor: pointer; margin: 10px auto 0; background: rgba(20,24,44,.9); color: #ff9a8a; border: 1px solid #7a3a32; padding: 7px 14px; transform: skewX(-12deg); }
-      #btn-share { margin: 12px auto 0; }
+      #share-row { justify-content: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
       #btn-dismiss-invite { display: none; font: inherit; cursor: pointer; margin: 10px auto 0; background: rgba(20,24,44,.9); color: #cfe0ff; border: 1px solid #46538a; padding: 7px 14px; transform: skewX(-12deg); }
       #btn-dismiss-invite span { display: inline-block; transform: skewX(12deg); font-size: 11.5px; font-weight: 800; letter-spacing: 1px; }
       #btn-cancel-net span { display: inline-block; transform: skewX(12deg); font-size: 11.5px; font-weight: 800; letter-spacing: 1px; }
@@ -226,7 +226,10 @@
           <span id="join-wrap"><input id="join-code" maxlength="4" placeholder="KODE" autocomplete="off" /><button class="net-btn" id="btn-join"><span>GABUNG</span></button></span>
         </div>
         <div id="net-status"></div>
-        <button class="net-btn" id="btn-share" style="display:none"><span>BAGIKAN LINK UNDANGAN</span></button>
+        <div id="share-row" style="display:none">
+          <button class="net-btn" id="btn-share"><span>BAGIKAN LINK</span></button>
+          <button class="net-btn" id="btn-copy-link"><span>SALIN LINK</span></button>
+        </div>
         <button id="btn-dismiss-invite"><span>ABAIKAN UNDANGAN</span></button>
         <button id="btn-cancel-net"><span>BATALKAN KONEKSI</span></button>
         <div id="char-cards"></div>

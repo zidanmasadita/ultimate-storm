@@ -1137,7 +1137,7 @@ function cleanupNet(): void {
   $('btn-chars').style.display = '';
   $('char-select').classList.remove('online');
   $('btn-cancel-net').style.display = 'none';
-  $('btn-share').style.display = 'none';
+  $('share-row').style.display = 'none';
   invitePick = null;
   setNetStatus('');
   refreshCardLocks();
@@ -1160,7 +1160,7 @@ function beginNet(role: 'host' | 'guest', code = ''): void {
 
   n.onCreated = (c) => {
     setNetStatus(`Bagikan kode ini ke lawanmu:<span class="room-code">${c}</span>Pilih karaktermu — pertarungan mulai saat lawan masuk & memilih juga.`);
-    $('btn-share').style.display = 'inline-block';
+    $('share-row').style.display = 'flex';
   };
   n.onJoined = () => {
     setNetStatus('Terhubung ke room! Pilih karaktermu untuk mulai.');
