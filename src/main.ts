@@ -749,6 +749,7 @@ function buildCharCards(): void {
       `<span class="cc-name">${c.name}</span>`;
     card.addEventListener('click', () => {
       if (net) pickOnline(c);
+      else if (inviteCode) joinViaInvite(c);
       else startMatch(c);
     });
     wrap.appendChild(card);
@@ -1136,6 +1137,8 @@ function cleanupNet(): void {
   $('btn-chars').style.display = '';
   $('char-select').classList.remove('online');
   $('btn-cancel-net').style.display = 'none';
+  $('btn-share').style.display = 'none';
+  invitePick = null;
   setNetStatus('');
   refreshCardLocks();
 }
@@ -1157,10 +1160,18 @@ function beginNet(role: 'host' | 'guest', code = ''): void {
 
   n.onCreated = (c) => {
     setNetStatus(`Bagikan kode ini ke lawanmu:<span class="room-code">${c}</span>Pilih karaktermu — pertarungan mulai saat lawan masuk & memilih juga.`);
+    $('btn-share').style.display = 'inline-block';
   };
   n.onJoined = () => {
     setNetStatus('Terhubung ke room! Pilih karaktermu untuk mulai.');
     n.sendGame('hello', { name: myName });
+    // Datang dari link undangan: karakter sudah dipilih sebelum
+    // tersambung — langsung teruskan pilihannya.
+    if (invitePick) {
+      const c = CHARACTERS.find((x) => x.id === invitePick);
+      invitePick = null;
+      if (c) pickOnline(c);
+    }
   };
   n.onPeerJoined = () => {
     guestJoined = true;
@@ -1210,6 +1221,69 @@ $('btn-create').addEventListener('click', () => {
   setNetStatus('Membuat room...');
   beginNet('host');
 });
+// ============================================================ Link undangan (?room=XXXX)
+// Selain kode room, host bisa membagikan link — teman yang
+// membukanya cukup isi username lalu pilih karakter untuk langsung
+// bergabung ke room itu.
+let inviteCode: string | null = null;
+let invitePick: string | null = null;
+
+function clearInvite(): void {
+  inviteCode = null;
+  $('btn-dismiss-invite').style.display = 'none';
+  const u = new URL(location.href);
+  u.searchParams.delete('room');
+  history.replaceState(null, '', u.toString());
+}
+
+function joinViaInvite(c: CharacterDef): void {
+  if (!inviteCode) return;
+  if (myName.length === 0) {
+    setNetStatus('Isi USERNAME dulu, lalu pilih karakter untuk bergabung.');
+    return;
+  }
+  const code = inviteCode;
+  clearInvite();
+  invitePick = c.id;
+  setNetStatus('Menghubungkan ke room undangan...');
+  beginNet('guest', code);
+}
+
+{
+  const p = new URLSearchParams(location.search).get('room');
+  if (p && /^[A-Z2-9]{4}$/.test(p.toUpperCase())) {
+    inviteCode = p.toUpperCase();
+    ($('join-code') as HTMLInputElement).value = inviteCode;
+    setNetStatus(`Kamu diundang bertanding!<span class="room-code">${inviteCode}</span>Isi USERNAME, lalu pilih karakter untuk langsung bergabung.`);
+    $('btn-dismiss-invite').style.display = 'block';
+  }
+}
+
+$('btn-dismiss-invite').addEventListener('click', () => {
+  clearInvite();
+  setNetStatus('');
+});
+
+$('btn-share').addEventListener('click', async () => {
+  if (!net || !net.code) return;
+  const url = `${location.origin}${location.pathname}?room=${net.code}`;
+  const nav = navigator as Navigator & { share?: (data: { title: string; text: string; url: string }) => Promise<void> };
+  if (nav.share) {
+    try {
+      await nav.share({ title: 'Ultimate Storm', text: 'Ayo tanding 1v1 di Ultimate Storm!', url });
+    } catch (_) {
+      /* pengguna membatalkan */
+    }
+  } else {
+    try {
+      await navigator.clipboard.writeText(url);
+      setNetStatus(`Link undangan tersalin — kirim ke temanmu!<span class="room-code">${net.code}</span>Room menunggu di kode ini — pilih karaktermu juga.`);
+    } catch (_) {
+      window.prompt('Salin link undangan ini:', url);
+    }
+  }
+});
+
 $('btn-join').addEventListener('click', () => {
   if (net) return;
   const code = ($('join-code') as HTMLInputElement).value.trim().toUpperCase();

@@ -156,6 +156,11 @@ klip, jadi roster campuran aman.
 - **Alur room**: Buat Room → kode tampil → tamu Gabung → keduanya
   kirim `hello {name}` (username) → pilih karakter (`pick`) → host
   kirim `start {host, guest, bo, hn, gn}` → bertarung.
+- **Link undangan**: selain kode, host dapat tombol BAGIKAN LINK
+  UNDANGAN (share sheet/clipboard) berisi `?room=XXXX`. Yang membuka
+  link cukup isi username lalu pilih karakter — otomatis bergabung
+  (parameter dibersihkan dari URL setelah dipakai; ada tombol
+  ABAIKAN UNDANGAN untuk yang hanya mau main vs bot).
 - **Best of**: dipilih host (BO1/3/5/7, tersimpan `us-bestof`),
   disebar via `roominfo` & `start`. Pemenang ronde dari K.O. di
   host; skor disiarkan (`score`). Capai target → `matchwin` →
