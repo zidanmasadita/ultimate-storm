@@ -255,7 +255,7 @@ $('btn-fullscreen').addEventListener('click', async () => {
   }
 });
 
-function castSkill(caster: Fighter, target: Fighter): void {
+function castSkill(caster: Fighter): void {
   const sk = caster.skill;
   if (caster.skillCooldown > 0 || caster.chakra < sk.chakraCost) return;
   caster.chakra -= sk.chakraCost;
@@ -267,8 +267,11 @@ function castSkill(caster: Fighter, target: Fighter): void {
   mesh.position.copy(start);
   scene.add(mesh);
 
-  const dir = target.pos.clone().add(new THREE.Vector3(0, 1.1, 0)).sub(start).normalize();
-  projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target, damage: sk.damage, color: sk.projectileColor });
+  // TANPA auto-aim: proyektil terbang lurus mengikuti arah hadap
+  // penembak. Pemain harus menghadapkan karakter sendiri ke musuh.
+  const dir = new THREE.Vector3(Math.sin(caster.facing), 0, Math.cos(caster.facing));
+  const foe = caster === player ? enemy : player;
+  projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target: foe, damage: sk.damage, color: sk.projectileColor });
   effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
 }
 
@@ -458,7 +461,7 @@ function updatePlayer(dt: number): void {
 
   // Serangan & jurus
   if (input.consume('attack')) tryAttack(player, enemy);
-  if (input.consume('skill')) castSkill(player, enemy);
+  if (input.consume('skill')) castSkill(player);
 }
 
 // ============================================================ Kamera lock-on ala Storm
