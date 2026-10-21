@@ -190,12 +190,22 @@ export class Fighter {
   /** Ganti model di dalam grup (chibi pembuka -> GLB asli saat selesai dimuat). */
   setModel(model: THREE.Object3D): void {
     this.inner.clear();
-    this.inner.add(model);
+    // WAJIB salin: satu Object3D hanya bisa punya satu induk. Tanpa
+    // clone, dua petarung berkarakter sama (mirror pick online) akan
+    // saling mencabut model — yang pertama jadi tidak terlihat.
+    // Material ikut disalin agar pijar buff/flash kena pukul satu
+    // petarung tidak menyala di kembarannya.
+    const inst = model.clone(true);
+    inst.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) mesh.material = (mesh.material as THREE.Material).clone();
+    });
+    this.inner.add(inst);
     this.materials = [];
     this.armL = null;
     this.armR = null;
     this.headGrp = null;
-    this.inner.traverse((o) => {
+    inst.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (mesh.isMesh) {
         const m = mesh.material as THREE.MeshStandardMaterial;
