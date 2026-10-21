@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildArena } from './game/arena';
 import { Fighter, chibiModel, loadFighterAsset, turnToward, type FighterAsset } from './game/character';
-import { CHARACTERS, type CharacterDef } from './game/characters';
+import { CHARACTERS, type CharacterDef, type RangedBasicDef } from './game/characters';
 import { DIFFICULTIES, type DifficultyDef } from './game/difficulty';
 import { Effects } from './game/effects';
 import { ACTION_LABELS, ActionId, DEFAULT_BINDS, Input, keyLabel, saveBinds } from './game/input';
@@ -195,6 +195,8 @@ interface Projectile {
   displace: number;
   /** Efek lambat yang dibawa proyektil ini (null = tidak ada). */
   slow: { factor: number; duration: number } | null;
+  /** Skala visual mesh (skill = besar, basic = 1). */
+  scale: number;
   id: number;
 }
 let projSeq = 0;
@@ -203,11 +205,33 @@ const projGeo = new THREE.SphereGeometry(0.22, 16, 12);
 const basicGeo = new THREE.SphereGeometry(0.15, 12, 10);
 
 /** Lahirkan satu proyektil (dipakai skill & basic attack jarak jauh). */
-function spawnProjectile(owner: Fighter, target: Fighter | null, start: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, color: number, geo: THREE.BufferGeometry, displace = 0, slow: { factor: number; duration: number } | null = null): void {
+/**
+ * Basic attack jarak jauh EFEKTIF seorang karakter:
+ * - `rangedBasic` eksplisit di data karakter selalu menang.
+ * - SEMUA karakter tipe Projectile otomatis dapat tembakan ringan
+ *   turunan skillnya: damage ±22% skill, tanpa biaya chakra, jeda
+ *   cepat dari `basicCooldown`. Skill tetap tembakan beratnya —
+ *   damage besar, pakai chakra, jeda lama, proyektil BESAR.
+ * - Tipe lain: null (basic melee).
+ */
+function effectiveRangedBasic(c: CharacterDef): RangedBasicDef | null {
+  if (c.rangedBasic) return c.rangedBasic;
+  if (c.typeName === 'Projectile' && c.skill.kind === 'projectile') {
+    return {
+      damage: Math.max(2, Math.round(c.skill.damage * 0.22)),
+      projectileSpeed: Math.max(18, Math.round(c.skill.projectileSpeed * 0.9)),
+      color: c.skill.projectileColor,
+    };
+  }
+  return null;
+}
+
+function spawnProjectile(owner: Fighter, target: Fighter | null, start: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, color: number, geo: THREE.BufferGeometry, displace = 0, slow: { factor: number; duration: number } | null = null, scale = 1): void {
   const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color }));
   mesh.position.copy(start);
+  mesh.scale.setScalar(scale);
   scene.add(mesh);
-  projectiles.push({ mesh, vel: dir.clone().multiplyScalar(speed), life: 2.2, owner, target, damage, color, displace, slow, id: ++projSeq });
+  projectiles.push({ mesh, vel: dir.clone().multiplyScalar(speed), life: 2.2, owner, target, damage, color, displace, slow, scale, id: ++projSeq });
 }
 
 // ============================================================ Kontrol sentuh (mobile)
@@ -300,7 +324,9 @@ function castSkill(caster: Fighter, aimError = 0): void {
   // (Bot diberi aimError kecil supaya tembakannya bisa dihindari.)
   const aim = caster.facing + aimError;
   const dir = new THREE.Vector3(Math.sin(aim), 0, Math.cos(aim));
-  spawnProjectile(caster, null, start, dir, sk.projectileSpeed, sk.damage, sk.projectileColor, projGeo, sk.displace ?? 0, sk.slow ?? null);
+  // Proyektil SKILL digambar BESAR (1,9x) agar jelas berbeda dari
+  // tembakan basic yang kecil & ringan.
+  spawnProjectile(caster, null, start, dir, sk.projectileSpeed, sk.damage, sk.projectileColor, projGeo, sk.displace ?? 0, sk.slow ?? null, 1.9);
   effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
   if (netRole === 'host' && net) net.sendGame('cast', { x: start.x, y: start.y, z: start.z, c: sk.projectileColor });
 }
@@ -860,7 +886,7 @@ function applyCharacter(f: Fighter, c: CharacterDef): void {
   f.meleeDamage = c.meleeDamage;
   f.basicCooldown = c.basicCooldown ?? 0.45;
   f.basicRange = c.basicRange ?? 2.5;
-  f.rangedBasic = c.rangedBasic ?? null;
+  f.rangedBasic = effectiveRangedBasic(c);
   const a = modelCache.get(c.id);
   if (a) installAsset(f, a);
   else f.setModel(chibiModel(c.palette));
@@ -1281,7 +1307,7 @@ let lastPingShown = -2;
 const remote = { wx: 0, wz: 0, mag: 0, acts: new Set<string>() };
 
 type SnapF = [number, number, number, number, number, number, number, number, number, number, number, number];
-type SnapP = [number, number, number, number, number];
+type SnapP = [number, number, number, number, number, (number | undefined)?];
 interface SnapMsg {
   a: SnapF;
   b: SnapF;
@@ -1303,7 +1329,7 @@ function broadcastSnap(): void {
   net.sendGame('snap', {
     a: snapFighter(player),
     b: snapFighter(enemy),
-    pr: projectiles.map((p): SnapP => [p.id, p.mesh.position.x, p.mesh.position.y, p.mesh.position.z, p.color]),
+    pr: projectiles.map((p): SnapP => [p.id, p.mesh.position.x, p.mesh.position.y, p.mesh.position.z, p.color, p.scale]),
   });
 }
 
@@ -1326,11 +1352,12 @@ function applySnapFighter(f: Fighter, s: SnapF, dt: number): void {
 
 function applySnapProjectiles(list: SnapP[]): void {
   const seen = new Set<number>();
-  for (const [id, x, y, z, c] of list) {
+  for (const [id, x, y, z, c, s] of list) {
     seen.add(id);
     let m = mirrorProjs.get(id);
     if (!m) {
       m = new THREE.Mesh(mirrorGeo, new THREE.MeshBasicMaterial({ color: c }));
+      m.scale.setScalar(s ?? 1);
       scene.add(m);
       mirrorProjs.set(id, m);
     }
