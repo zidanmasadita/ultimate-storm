@@ -1264,9 +1264,14 @@ $('btn-dismiss-invite').addEventListener('click', () => {
   setNetStatus('');
 });
 
+function inviteUrl(): string {
+  if (!net || !net.code) return '';
+  return `${location.origin}${location.pathname}?room=${net.code}`;
+}
+
 $('btn-share').addEventListener('click', async () => {
-  if (!net || !net.code) return;
-  const url = `${location.origin}${location.pathname}?room=${net.code}`;
+  const url = inviteUrl();
+  if (!url) return;
   const nav = navigator as Navigator & { share?: (data: { title: string; text: string; url: string }) => Promise<void> };
   if (nav.share) {
     try {
@@ -1275,12 +1280,18 @@ $('btn-share').addEventListener('click', async () => {
       /* pengguna membatalkan */
     }
   } else {
-    try {
-      await navigator.clipboard.writeText(url);
-      setNetStatus(`Link undangan tersalin — kirim ke temanmu!<span class="room-code">${net.code}</span>Room menunggu di kode ini — pilih karaktermu juga.`);
-    } catch (_) {
-      window.prompt('Salin link undangan ini:', url);
-    }
+    window.prompt('Salin link undangan ini:', url);
+  }
+});
+
+$('btn-copy-link').addEventListener('click', async () => {
+  const url = inviteUrl();
+  if (!url || !net || !net.code) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    setNetStatus(`Link undangan tersalin — kirim ke temanmu!<span class="room-code">${net.code}</span>Room menunggu di kode ini — pilih karaktermu juga.`);
+  } catch (_) {
+    window.prompt('Salin link undangan ini:', url);
   }
 });
 
