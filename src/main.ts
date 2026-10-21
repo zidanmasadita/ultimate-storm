@@ -25,9 +25,16 @@ const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
 // Mode ringan: bayangan mati, tanpa tone mapping, pixelRatio 1.
 // Aktif lewat ?ringan=1 atau otomatis bila renderer terbukti tidak menggambar.
+// Mode ringan SEKARANG DEFAULT di perangkat sentuh: bayangan mati,
+// tanpa tone mapping, pixelRatio 1, tanpa antialias — frame pertama
+// harus murah supaya halaman cepat "jadi" di HP lama (Safari meredupkan
+// snapshot halaman lama selama halaman baru belum selesai digambar).
+// Paksa mode penuh dengan ?full=1.
 const LIGHT_MODE =
-  new URLSearchParams(location.search).has('ringan') ||
-  sessionStorage.getItem('us-ringan') === '1';
+  !new URLSearchParams(location.search).has('full') &&
+  (isTouchDevice ||
+    new URLSearchParams(location.search).has('ringan') ||
+    sessionStorage.getItem('us-ringan') === '1');
 
 // Three r163+ wajib WebGL2 — cek dulu supaya kegagalannya berupa pesan
 // yang terbaca, bukan layar hitam.
@@ -509,6 +516,11 @@ function tick(): void {
   input.endFrame();
   renderer.render(scene, camera);
   (window as unknown as { __gameBooted?: boolean }).__gameBooted = true;
+  if (frameCount === 0) {
+    // Frame pertama tergambar -> singkirkan layar muat statis.
+    const splash = document.getElementById('boot-splash');
+    if (splash) splash.style.display = 'none';
+  }
 
   frameCount++;
   lastCalls = renderer.info.render.calls;
