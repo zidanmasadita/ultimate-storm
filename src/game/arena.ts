@@ -52,9 +52,12 @@ export function buildArena(scene: THREE.Scene, opts?: { shadowMapSize?: number }
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // Badan platform (pulau melayang)
+  // Badan platform (pulau melayang) — OPEN-ENDED: tutup atas silinder
+  // bidangnya persis sama dengan lantai (y = ringTopY) dan menyebabkan
+  // z-fighting bergaris di seluruh lantai. Sisi saja; pertemuan dengan
+  // lantai ditutup cincin rim.
   const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(ringRadius, ringRadius * 0.45, 7, 72),
+    new THREE.CylinderGeometry(ringRadius, ringRadius * 0.45, 7, 72, 1, true),
     new THREE.MeshStandardMaterial({ color: 0x5b4a3f, roughness: 1 }),
   );
   body.position.y = ringTopY - 3.5;

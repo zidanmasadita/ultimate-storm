@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DEFAULT_SKILL, type SkillDef } from './characters';
 
 /**
  * Karakter petarung CHIBI prosedural — dibangun dari bentuk dasar
@@ -154,6 +155,10 @@ export class Fighter {
 
   hp = 100;
   chakra = 100;
+  /** Skill karakter yang sedang dimainkan (diatur layer pilih karakter). */
+  skill: SkillDef = DEFAULT_SKILL;
+  /** Id karakter roster yang sedang dimainkan ('' sebelum memilih). */
+  charId = '';
 
   attackTimer = 0;
   attackCooldown = 0;

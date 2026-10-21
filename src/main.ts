@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildArena } from './game/arena';
 import { Fighter, chibiModel, loadFighterModel, turnToward } from './game/character';
+import { CHARACTERS, type CharacterDef } from './game/characters';
 import { Effects } from './game/effects';
 import { ACTION_LABELS, ActionId, DEFAULT_BINDS, Input, keyLabel, saveBinds } from './game/input';
 
@@ -72,19 +73,22 @@ const input = new Input();
 const SPAWN_1 = new THREE.Vector3(-6, arena.ringTopY, 0);
 const SPAWN_2 = new THREE.Vector3(6, arena.ringTopY, 0);
 
-// Karakter dibuka instan sebagai chibi; GLB asli pengguna ditukar masuk
-// begitu selesai diunduh (tidak memblokir frame pertama).
-const PAL1 = { outfit: 0x2f6fd6, hair: 0x23202e, band: 0x2440a0 };
-const PAL2 = { outfit: 0xd64a2f, hair: 0x3a2318, band: 0xa02418 };
-const player = new Fighter(chibiModel(PAL1));
-const enemy = new Fighter(chibiModel(PAL2));
+// Petarung dibuka instan sebagai chibi; model GLB semua karakter roster
+// dimuat di latar dan ditukar masuk sesuai pilihan di layer karakter.
+const player = new Fighter(chibiModel(CHARACTERS[0].palette));
+const enemy = new Fighter(chibiModel(CHARACTERS[1].palette));
 player.reset(SPAWN_1, Math.PI / 2);
 enemy.reset(SPAWN_2, -Math.PI / 2);
 scene.add(player.group, enemy.group);
-let playerModelLoaded = false;
-let enemyModelLoaded = false;
-loadFighterModel('models/player1.glb', PAL1).then((m) => { player.setModel(m); playerModelLoaded = true; });
-loadFighterModel('models/player2.glb', PAL2).then((m) => { enemy.setModel(m); enemyModelLoaded = true; });
+
+const modelCache = new Map<string, THREE.Object3D>();
+for (const c of CHARACTERS) {
+  loadFighterModel(c.modelUrl, c.palette).then((m) => {
+    modelCache.set(c.id, m);
+    if (player.charId === c.id) player.setModel(m);
+    if (enemy.charId === c.id) enemy.setModel(m);
+  });
+}
 
 // ============================================================ HUD & panel
 const $ = (id: string) => document.getElementById(id)!;
@@ -106,7 +110,7 @@ function renderHints(): void {
   const b = input.binds;
   hintsEl.innerHTML =
     `<b>W A S D</b> Gerak &nbsp; <b>${keyLabel(b.jump)}</b> Lompat &nbsp; <b>${keyLabel(b.dash)}</b> Dash<br>` +
-    `<b>${keyLabel(b.attack)}</b> Serangan &nbsp; <b>${keyLabel(b.skill)}</b> Jurus`;
+    `<b>${keyLabel(b.attack)}</b> Serangan &nbsp; <b>${keyLabel(b.skill)}</b> ${player.skill.name}`;
 }
 
 const rowsEl = $('bind-rows');
@@ -178,6 +182,8 @@ interface Projectile {
   life: number;
   owner: Fighter;
   target: Fighter;
+  damage: number;
+  color: number;
 }
 const projectiles: Projectile[] = [];
 const projGeo = new THREE.SphereGeometry(0.22, 16, 12);
@@ -250,19 +256,20 @@ $('btn-fullscreen').addEventListener('click', async () => {
 });
 
 function castSkill(caster: Fighter, target: Fighter): void {
-  if (caster.skillCooldown > 0 || caster.chakra < 25) return;
-  caster.chakra -= 25;
-  caster.skillCooldown = 0.9;
+  const sk = caster.skill;
+  if (caster.skillCooldown > 0 || caster.chakra < sk.chakraCost) return;
+  caster.chakra -= sk.chakraCost;
+  caster.skillCooldown = sk.cooldown;
 
-  const mat = new THREE.MeshBasicMaterial({ color: 0x66ccff });
+  const mat = new THREE.MeshBasicMaterial({ color: sk.projectileColor });
   const mesh = new THREE.Mesh(projGeo, mat);
   const start = caster.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
   mesh.position.copy(start);
   scene.add(mesh);
 
   const dir = target.pos.clone().add(new THREE.Vector3(0, 1.1, 0)).sub(start).normalize();
-  projectiles.push({ mesh, vel: dir.multiplyScalar(19), life: 2.2, owner: caster, target });
-  effects.burst(start, 0x66ccff, 14, 3, 0.35, 0.12);
+  projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target, damage: sk.damage, color: sk.projectileColor });
+  effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
 }
 
 function updateProjectiles(dt: number): void {
@@ -270,13 +277,13 @@ function updateProjectiles(dt: number): void {
     const p = projectiles[i];
     p.life -= dt;
     p.mesh.position.addScaledVector(p.vel, dt);
-    effects.burst(p.mesh.position, 0x3399ff, 2, 0.6, 0.3, 0.1);
+    effects.burst(p.mesh.position, p.color, 2, 0.6, 0.3, 0.1);
 
     const targetPos = p.target.pos.clone().add(new THREE.Vector3(0, 1.1, 0));
     const hit = p.mesh.position.distanceTo(targetPos) < 1.05;
     if (hit || p.life <= 0) {
-      effects.burst(p.mesh.position, 0x66ccff, 30, 6, 0.55, 0.16);
-      if (hit) applyHit(p.target, p.owner, 12, 7);
+      effects.burst(p.mesh.position, p.color, 30, 6, 0.55, 0.16);
+      if (hit) applyHit(p.target, p.owner, p.damage, 7);
       scene.remove(p.mesh);
       (p.mesh.material as THREE.Material).dispose();
       projectiles.splice(i, 1);
@@ -480,10 +487,64 @@ function updateCamera(dt: number): void {
   camera.lookAt(mid);
 }
 
+// ============================================================ Pilih karakter
+// Layer awal: pertandingan tidak mulai sampai pemain memilih. Musuh =
+// karakter lain (acak bila roster > 2). Karakter baru di characters.ts
+// otomatis muncul di sini.
+let matchStarted = false;
+
+function applyCharacter(f: Fighter, c: CharacterDef): void {
+  f.charId = c.id;
+  f.skill = c.skill;
+  const m = modelCache.get(c.id);
+  if (m) f.setModel(m);
+  else f.setModel(chibiModel(c.palette));
+}
+
+function startMatch(pick: CharacterDef): void {
+  const others = CHARACTERS.filter((c) => c.id !== pick.id);
+  const foe = others[Math.floor(Math.random() * others.length)] ?? pick;
+  applyCharacter(player, pick);
+  applyCharacter(enemy, foe);
+  for (const p of projectiles) scene.remove(p.mesh);
+  projectiles.length = 0;
+  player.reset(SPAWN_1, Math.PI / 2);
+  enemy.reset(SPAWN_2, -Math.PI / 2);
+  matchStarted = true;
+  $('char-select').classList.remove('open');
+  renderBindRows();
+  const tbLabel = document.querySelector('#tb-skill .tb-label');
+  if (tbLabel) tbLabel.textContent = pick.skill.name.toUpperCase();
+  showBanner('FIGHT!', 1.1);
+}
+
+function buildCharCards(): void {
+  const wrap = $('char-cards');
+  wrap.innerHTML = '';
+  for (const c of CHARACTERS) {
+    const card = document.createElement('button');
+    card.className = 'char-card';
+    card.style.setProperty('--accent', c.accent);
+    card.innerHTML =
+      `<span class="cc-emblem">${c.name.charAt(0)}</span>` +
+      `<span class="cc-name">${c.name}</span>` +
+      `<span class="cc-epithet">${c.epithet}</span>` +
+      `<span class="cc-skill">Skill: <b>${c.skill.name}</b></span>` +
+      `<span class="cc-stats">DMG ${c.skill.damage} · Chakra ${c.skill.chakraCost} · Cooldown ${c.skill.cooldown}s</span>`;
+    card.addEventListener('click', () => startMatch(c));
+    wrap.appendChild(card);
+  }
+}
+buildCharCards();
+$('char-select').classList.add('open');
+$('btn-chars').addEventListener('click', () => {
+  matchStarted = false;
+  $('char-select').classList.add('open');
+});
+
 // ============================================================ Loop
 let perfTime = 0;
 const clock = new THREE.Clock();
-showBanner('FIGHT!', 1.1);
 
 // ============================================================ Panel diagnostik
 // Menampilkan keadaan renderer yang sebenarnya di perangkat pengguna.
@@ -501,11 +562,17 @@ function tick(): void {
   const dt = Math.min(clock.getDelta(), 0.05);
   perfTime += dt;
 
-  updatePlayer(dt);
-  updateEnemy(dt);
-  integrate(player, dt);
-  integrate(enemy, dt);
-  updateProjectiles(dt);
+  if (matchStarted) {
+    updatePlayer(dt);
+    updateEnemy(dt);
+    integrate(player, dt);
+    integrate(enemy, dt);
+    updateProjectiles(dt);
+  } else {
+    // Di layer pilih karakter: petarung diam beranimasi idle.
+    player.animate(dt, perfTime, 0);
+    enemy.animate(dt, perfTime, 0);
+  }
   effects.update(dt);
   updateCamera(dt);
 
@@ -535,7 +602,7 @@ function tick(): void {
     const gl = renderer.getContext();
     debugEl.textContent =
       `draw ${lastCalls} · tri ${(lastTris / 1000).toFixed(0)}k · frame ${frameCount}\n` +
-      `model P1 ${playerModelLoaded ? 'GLB' : 'chibi...'} · P2 ${enemyModelLoaded ? 'GLB' : 'chibi...'}\n` +
+      `model dimuat: ${modelCache.size}/${CHARACTERS.length} · P1 ${player.charId || '-'} · P2 ${enemy.charId || '-'}\n` +
       `ctx lost: ${gl.isContextLost()} · canvas ${renderer.domElement.width}x${renderer.domElement.height}\n` +
       `mode: ${LIGHT_MODE ? 'RINGAN' : 'normal'}`;
   }
