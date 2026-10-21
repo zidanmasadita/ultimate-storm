@@ -155,6 +155,10 @@ export class Fighter {
 
   hp = 100;
   chakra = 100;
+  /** Statistik dari tipe karakter (diatur layer pilih karakter). */
+  chakraMax = 100;
+  chakraRegen = 7;
+  moveSpeedMul = 1;
   /** Skill karakter yang sedang dimainkan (diatur layer pilih karakter). */
   skill: SkillDef = DEFAULT_SKILL;
   /** Id karakter roster yang sedang dimainkan ('' sebelum memilih). */
@@ -266,7 +270,7 @@ export class Fighter {
     this.vy = 0;
     this.facing = facing;
     this.hp = 100;
-    this.chakra = 100;
+    this.chakra = this.chakraMax;
     this.attackTimer = 0;
     this.hitTimer = 0;
   }

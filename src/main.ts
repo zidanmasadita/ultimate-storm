@@ -407,13 +407,13 @@ function updateEnemy(dt: number): void {
   const desired = new THREE.Vector3();
   if (enemy.dashTimer <= 0) {
     if (enemyMode === 'chase') {
-      if (dist > 2.1) desired.copy(toPlayer.clone().normalize().multiplyScalar(WALK_SPEED * botDiff.speedMul));
+      if (dist > 2.1) desired.copy(toPlayer.clone().normalize().multiplyScalar(WALK_SPEED * botDiff.speedMul * enemy.moveSpeedMul));
     } else if (enemyMode === 'strafe') {
       const tangent = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize().multiplyScalar(enemyStrafe * 5 * botDiff.speedMul);
       const inward = toPlayer.clone().normalize().multiplyScalar(dist > 3.4 ? 2 : -1);
       desired.copy(tangent).add(inward);
     } else {
-      desired.copy(toPlayer.clone().normalize().multiplyScalar(-WALK_SPEED * botDiff.speedMul));
+      desired.copy(toPlayer.clone().normalize().multiplyScalar(-WALK_SPEED * botDiff.speedMul * enemy.moveSpeedMul));
     }
     steer(enemy, desired, dt);
   }
@@ -470,7 +470,7 @@ function integrate(f: Fighter, dt: number): void {
   f.dashCooldown = Math.max(0, f.dashCooldown - dt);
   f.skillCooldown = Math.max(0, f.skillCooldown - dt);
   f.hitTimer = Math.max(0, f.hitTimer - dt);
-  f.chakra = Math.min(100, f.chakra + 7 * dt);
+  f.chakra = Math.min(f.chakraMax, f.chakra + f.chakraRegen * dt);
 
   const speed2D = Math.hypot(f.vel.x, f.vel.z);
   f.animate(dt, perfTime, speed2D);
@@ -503,7 +503,7 @@ function updatePlayer(dt: number): void {
     effects.burst(player.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), 0x9fc1ff, 16, 2.5, 0.35, 0.12);
   }
 
-  const speed = player.dashTimer > 0 ? 17 : WALK_SPEED * axisMag;
+  const speed = player.dashTimer > 0 ? 17 : WALK_SPEED * player.moveSpeedMul * axisMag;
   const desired = moving ? wish.clone().multiplyScalar(speed) : new THREE.Vector3();
   if (player.dashTimer <= 0) steer(player, desired, dt);
 
@@ -561,6 +561,9 @@ let matchStarted = false;
 function applyCharacter(f: Fighter, c: CharacterDef): void {
   f.charId = c.id;
   f.skill = c.skill;
+  f.chakraMax = c.chakraMax;
+  f.chakraRegen = c.chakraRegen;
+  f.moveSpeedMul = c.moveSpeedMul;
   const m = modelCache.get(c.id);
   if (m) f.setModel(m);
   else f.setModel(chibiModel(c.palette));
@@ -577,6 +580,8 @@ function startMatch(pick: CharacterDef): void {
   enemy.reset(SPAWN_2, -Math.PI / 2);
   matchStarted = true;
   $('char-select').classList.remove('open');
+  $('name1').textContent = `${pick.name} · ${pick.typeName}`;
+  $('name2').textContent = `${foe.name} · ${foe.typeName}`;
   renderBindRows();
   const tbLabel = document.querySelector('#tb-skill .tb-label');
   if (tbLabel) tbLabel.textContent = pick.skill.name.toUpperCase();
@@ -662,9 +667,9 @@ function tick(): void {
   }
 
   hp1El.style.width = `${player.hp}%`;
-  ck1El.style.width = `${player.chakra}%`;
+  ck1El.style.width = `${(player.chakra / player.chakraMax) * 100}%`;
   hp2El.style.width = `${enemy.hp}%`;
-  ck2El.style.width = `${enemy.chakra}%`;
+  ck2El.style.width = `${(enemy.chakra / enemy.chakraMax) * 100}%`;
 
   input.endFrame();
   renderer.render(scene, camera);

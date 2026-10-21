@@ -21,7 +21,15 @@ export interface SkillDef {
 export interface CharacterDef {
   id: string;
   name: string;
+  /** Tipe karakter — identitas gaya main (Penyihir, Projectile, ...). */
+  typeName: string;
   epithet: string;
+  /** Kapasitas chakra maksimum (tiap tipe beda). */
+  chakraMax: number;
+  /** Pemulihan chakra per detik. */
+  chakraRegen: number;
+  /** Pengali kecepatan gerak terhadap kecepatan dasar. */
+  moveSpeedMul: number;
   modelUrl: string;
   /** Foto muka karakter untuk kartu pilih (di dalam jajar genjang). */
   faceUrl: string;
@@ -46,7 +54,11 @@ export const CHARACTERS: CharacterDef[] = [
   {
     id: 'omen',
     name: 'OMEN',
+    typeName: 'Penyihir',
     epithet: 'Jubah Putih',
+    chakraMax: 160,
+    chakraRegen: 14,
+    moveSpeedMul: 1.15,
     modelUrl: 'models/player1.glb',
     faceUrl: 'faces/omen.jpg',
     palette: { outfit: 0x2f6fd6, hair: 0x23202e, band: 0x2440a0 },
@@ -54,8 +66,8 @@ export const CHARACTERS: CharacterDef[] = [
     skill: {
       name: 'Light Shadow',
       chakraCost: 10, // minim chakra
-      damage: 6, // damage kecil, bisa sering dipakai
-      cooldown: 0.9,
+      damage: 6, // damage tidak terlalu sakit
+      cooldown: 0.7, // cast cepat
       projectileColor: 0xf2f5ff,
       projectileSpeed: 21,
     },
@@ -63,7 +75,11 @@ export const CHARACTERS: CharacterDef[] = [
   {
     id: 'koboi',
     name: 'KOBOI',
+    typeName: 'Projectile',
     epithet: 'Penembak Barat',
+    chakraMax: 60,
+    chakraRegen: 5,
+    moveSpeedMul: 1.05,
     modelUrl: 'models/player2.glb',
     faceUrl: 'faces/koboi.jpg',
     palette: { outfit: 0xd64a2f, hair: 0x3a2318, band: 0xa02418 },
@@ -72,7 +88,7 @@ export const CHARACTERS: CharacterDef[] = [
       name: 'Pistol',
       chakraCost: 15, // chakra kecil
       damage: 22, // damage tinggi
-      cooldown: 2.5, // tapi cooldown lebih lama
+      cooldown: 2.5, // cast lambat
       projectileColor: 0xffc46b,
       projectileSpeed: 30,
     },
