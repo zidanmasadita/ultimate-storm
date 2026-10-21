@@ -160,6 +160,10 @@ export class Fighter {
   chakraRegen = 7;
   moveSpeedMul = 1;
   meleeDamage = 6;
+  /** Variasi basic attack dari tipe karakter (diatur layer pilih karakter). */
+  basicCooldown = 0.45;
+  basicRange = 2.5;
+  rangedBasic: { damage: number; projectileSpeed: number; color: number } | null = null;
   /** Sisa waktu buff penguatan (detik) & pengali damagenya. */
   buffTimer = 0;
   buffMul = 1;

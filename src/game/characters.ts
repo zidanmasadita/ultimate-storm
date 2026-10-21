@@ -26,6 +26,13 @@ export interface SkillDef {
   displace?: number;
 }
 
+/** Basic attack jarak jauh (tipe Projectile): tembakan lurus searah hadap. */
+export interface RangedBasicDef {
+  damage: number;
+  projectileSpeed: number;
+  color: number;
+}
+
 export interface CharacterDef {
   id: string;
   name: string;
@@ -40,6 +47,12 @@ export interface CharacterDef {
   moveSpeedMul: number;
   /** Damage serangan jarak dekat (putaran) per kena. */
   meleeDamage: number;
+  /** Jeda antar basic attack (detik) — variasi rasa per tipe. */
+  basicCooldown?: number;
+  /** Jangkauan basic attack putar (unit). */
+  basicRange?: number;
+  /** Bila ada: basic attack-nya tembakan jarak jauh, bukan putaran. */
+  rangedBasic?: RangedBasicDef;
   modelUrl: string;
   /** Foto muka karakter untuk kartu pilih (di dalam jajar genjang). */
   faceUrl: string;
@@ -71,6 +84,7 @@ export const CHARACTERS: CharacterDef[] = [
     chakraRegen: 14,
     moveSpeedMul: 1.15,
     meleeDamage: 6,
+    basicCooldown: 0.38, // putaran cepat khas penyihir
     modelUrl: 'models/player1.glb',
     faceUrl: 'faces/omen.jpg',
     palette: { outfit: 0x2f6fd6, hair: 0x23202e, band: 0x2440a0 },
@@ -94,6 +108,8 @@ export const CHARACTERS: CharacterDef[] = [
     chakraRegen: 5,
     moveSpeedMul: 1.05,
     meleeDamage: 6,
+    basicCooldown: 0.42,
+    rangedBasic: { damage: 5, projectileSpeed: 27, color: 0xffd76a }, // basic attack tembakan jarak jauh
     modelUrl: 'models/player2.glb',
     faceUrl: 'faces/koboi.jpg',
     palette: { outfit: 0xd64a2f, hair: 0x3a2318, band: 0xa02418 },
@@ -117,6 +133,8 @@ export const CHARACTERS: CharacterDef[] = [
     chakraRegen: 7,
     moveSpeedMul: 0.85, // lambat
     meleeDamage: 13, // serangan sangat besar
+    basicCooldown: 0.55, // ayunan berat: lambat tapi sakit
+    basicRange: 2.7,
     modelUrl: 'models/ryu.glb',
     faceUrl: 'faces/ryu.jpg',
     palette: { outfit: 0xe8e4da, hair: 0x2e2622, band: 0xc0272d },
@@ -142,6 +160,7 @@ export const CHARACTERS: CharacterDef[] = [
     chakraRegen: 14,
     moveSpeedMul: 1.15,
     meleeDamage: 6,
+    basicCooldown: 0.38, // putaran cepat seperti Omen
     modelUrl: 'models/wichy.glb',
     faceUrl: 'faces/wichy.jpg',
     palette: { outfit: 0x2c3e8f, hair: 0x2a1e24, band: 0xc0272d },
@@ -166,6 +185,8 @@ export const CHARACTERS: CharacterDef[] = [
     chakraRegen: 7,
     moveSpeedMul: 0.92, // ...kecuali sedikit lebih cepat dari Ryu (0.85)
     meleeDamage: 11, // ...dan damage sedikit lebih kecil dari Ryu (13)
+    basicCooldown: 0.5, // ayunan berat khas fighter
+    basicRange: 2.7,
     modelUrl: 'models/ronin.glb',
     faceUrl: 'faces/ronin.jpg',
     palette: { outfit: 0x2c2c34, hair: 0xe8e8ec, band: 0xc0272d },

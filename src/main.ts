@@ -192,6 +192,15 @@ interface Projectile {
 let projSeq = 0;
 const projectiles: Projectile[] = [];
 const projGeo = new THREE.SphereGeometry(0.22, 16, 12);
+const basicGeo = new THREE.SphereGeometry(0.15, 12, 10);
+
+/** Lahirkan satu proyektil (dipakai skill & basic attack jarak jauh). */
+function spawnProjectile(owner: Fighter, target: Fighter, start: THREE.Vector3, dir: THREE.Vector3, speed: number, damage: number, color: number, geo: THREE.BufferGeometry, displace = 0): void {
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color }));
+  mesh.position.copy(start);
+  scene.add(mesh);
+  projectiles.push({ mesh, vel: dir.clone().multiplyScalar(speed), life: 2.2, owner, target, damage, color, displace, id: ++projSeq });
+}
 
 // ============================================================ Kontrol sentuh (mobile)
 // Tampilkan UI sentuh begitu ada sentuhan pertama terdeteksi.
@@ -276,11 +285,7 @@ function castSkill(caster: Fighter, aimError = 0): void {
     return;
   }
 
-  const mat = new THREE.MeshBasicMaterial({ color: sk.projectileColor });
-  const mesh = new THREE.Mesh(projGeo, mat);
   const start = caster.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
-  mesh.position.copy(start);
-  scene.add(mesh);
 
   // TANPA auto-aim: proyektil terbang lurus mengikuti arah hadap
   // penembak. Pemain harus menghadapkan karakter sendiri ke musuh.
@@ -288,7 +293,7 @@ function castSkill(caster: Fighter, aimError = 0): void {
   const aim = caster.facing + aimError;
   const dir = new THREE.Vector3(Math.sin(aim), 0, Math.cos(aim));
   const foe = caster === player ? enemy : player;
-  projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target: foe, damage: sk.damage, color: sk.projectileColor, displace: sk.displace ?? 0, id: ++projSeq });
+  spawnProjectile(caster, foe, start, dir, sk.projectileSpeed, sk.damage, sk.projectileColor, projGeo, sk.displace ?? 0);
   effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
   if (netRole === 'host' && net) net.sendGame('cast', { x: start.x, y: start.y, z: start.z, c: sk.projectileColor });
 }
@@ -418,11 +423,25 @@ function updateScoreLabel(): void {
 function tryAttack(attacker: Fighter, victim: Fighter): void {
   if (attacker.attackCooldown > 0) return;
   attacker.attackTimer = 0.35;
-  attacker.attackCooldown = 0.45;
+  attacker.attackCooldown = attacker.basicCooldown;
+
+  // Basic attack JARAK JAUH (tipe Projectile): tembakan lurus searah
+  // hadap, tanpa auto-aim. Damage per tembakan lebih kecil dari
+  // pukulan, ditukar jangkauan jauh.
+  const rb = attacker.rangedBasic;
+  if (rb) {
+    const dir = new THREE.Vector3(Math.sin(attacker.facing), 0, Math.cos(attacker.facing));
+    const start = attacker.pos.clone().addScaledVector(dir, 0.7).add(new THREE.Vector3(0, 1.3, 0));
+    spawnProjectile(attacker, victim, start, dir, rb.projectileSpeed, rb.damage, rb.color, basicGeo);
+    effects.burst(start, rb.color, 6, 2, 0.2, 0.08);
+    if (netRole === 'host' && net) net.sendGame('cast', { x: start.x, y: start.y, z: start.z, c: rb.color });
+    return;
+  }
+
   // Putaran serangan mengenai musuh di dekatnya
   setTimeout(() => {
     const d = attacker.pos.distanceTo(victim.pos);
-    if (d < 2.5) applyHit(victim, attacker, attacker.meleeDamage, 5);
+    if (d < attacker.basicRange) applyHit(victim, attacker, attacker.meleeDamage, 5);
   }, 130);
 }
 
@@ -510,8 +529,9 @@ function updateEnemy(dt: number): void {
     steer(enemy, desired, dt);
   }
 
-  // --- Serangan jarak dekat (level rendah ragu-ragu, tinggi langsung)
-  if (dist < 2.5) {
+  // --- Serangan (jarak dekat, atau tembakan untuk tipe Projectile)
+  const atkRange = enemy.rangedBasic ? 15 : 2.5;
+  if (dist < atkRange) {
     if (botDiff.meleeInstant) {
       if (enemy.attackCooldown <= 0) tryAttack(enemy, player);
     } else if (Math.random() < dt * botDiff.meleeRate) {
@@ -684,6 +704,9 @@ function applyCharacter(f: Fighter, c: CharacterDef): void {
   f.chakraRegen = c.chakraRegen;
   f.moveSpeedMul = c.moveSpeedMul;
   f.meleeDamage = c.meleeDamage;
+  f.basicCooldown = c.basicCooldown ?? 0.45;
+  f.basicRange = c.basicRange ?? 2.5;
+  f.rangedBasic = c.rangedBasic ?? null;
   const m = modelCache.get(c.id);
   if (m) f.setModel(m);
   else f.setModel(chibiModel(c.palette));
@@ -728,6 +751,36 @@ function buildCharCards(): void {
 }
 buildCharCards();
 
+// ============================================================ Zoom carousel kartu
+// Kartu terdekat ke tengah strip diperbesar, yang jauh mengecil.
+const cardsEl = $('char-cards');
+function updateCardZoom(): void {
+  const cr = cardsEl.getBoundingClientRect();
+  const cx = cr.left + cr.width / 2;
+  cardsEl.querySelectorAll<HTMLElement>('.char-card').forEach((el) => {
+    const r = el.getBoundingClientRect();
+    const d = Math.abs(r.left + r.width / 2 - cx);
+    const t = Math.max(0, 1 - d / Math.max(r.width, 1) / 1.6);
+    el.style.transform = `scale(${(0.88 + 0.27 * t).toFixed(3)})`;
+    el.style.zIndex = String(Math.round(t * 10));
+  });
+}
+let zoomQueued = false;
+cardsEl.addEventListener(
+  'scroll',
+  () => {
+    if (zoomQueued) return;
+    zoomQueued = true;
+    requestAnimationFrame(() => {
+      zoomQueued = false;
+      updateCardZoom();
+    });
+  },
+  { passive: true },
+);
+window.addEventListener('resize', updateCardZoom);
+requestAnimationFrame(updateCardZoom);
+
 function buildDiffChips(): void {
   const row = $('diff-row');
   row.innerHTML = '';
@@ -750,6 +803,7 @@ $('btn-chars').addEventListener('click', () => {
   if (net) cleanupNet();
   matchStarted = false;
   $('char-select').classList.add('open');
+  requestAnimationFrame(updateCardZoom);
 });
 
 // ============================================================ Mode online 1v1
