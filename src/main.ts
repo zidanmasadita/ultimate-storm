@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildArena } from './game/arena';
-import { Fighter, chibiModel, turnToward } from './game/character';
+import { Fighter, chibiModel, loadFighterModel, turnToward } from './game/character';
 import { Effects } from './game/effects';
 import { ACTION_LABELS, ActionId, DEFAULT_BINDS, Input, keyLabel, saveBinds } from './game/input';
 
@@ -72,13 +72,19 @@ const input = new Input();
 const SPAWN_1 = new THREE.Vector3(-6, arena.ringTopY, 0);
 const SPAWN_2 = new THREE.Vector3(6, arena.ringTopY, 0);
 
-// Karakter CHIBI bawaan — dibangun prosedural di kode, tanpa file model:
-// muat awal ringan dan langsung bisa dimainkan di semua perangkat.
-const player = new Fighter(chibiModel({ outfit: 0x2f6fd6, hair: 0x23202e, band: 0x2440a0 }));
-const enemy = new Fighter(chibiModel({ outfit: 0xd64a2f, hair: 0x3a2318, band: 0xa02418 }));
+// Karakter dibuka instan sebagai chibi; GLB asli pengguna ditukar masuk
+// begitu selesai diunduh (tidak memblokir frame pertama).
+const PAL1 = { outfit: 0x2f6fd6, hair: 0x23202e, band: 0x2440a0 };
+const PAL2 = { outfit: 0xd64a2f, hair: 0x3a2318, band: 0xa02418 };
+const player = new Fighter(chibiModel(PAL1));
+const enemy = new Fighter(chibiModel(PAL2));
 player.reset(SPAWN_1, Math.PI / 2);
 enemy.reset(SPAWN_2, -Math.PI / 2);
 scene.add(player.group, enemy.group);
+let playerModelLoaded = false;
+let enemyModelLoaded = false;
+loadFighterModel('models/player1.glb', PAL1).then((m) => { player.setModel(m); playerModelLoaded = true; });
+loadFighterModel('models/player2.glb', PAL2).then((m) => { enemy.setModel(m); enemyModelLoaded = true; });
 
 // ============================================================ HUD & panel
 const $ = (id: string) => document.getElementById(id)!;
@@ -529,7 +535,7 @@ function tick(): void {
     const gl = renderer.getContext();
     debugEl.textContent =
       `draw ${lastCalls} · tri ${(lastTris / 1000).toFixed(0)}k · frame ${frameCount}\n` +
-      `karakter: chibi bawaan (tanpa unduh model)\n` +
+      `model P1 ${playerModelLoaded ? 'GLB' : 'chibi...'} · P2 ${enemyModelLoaded ? 'GLB' : 'chibi...'}\n` +
       `ctx lost: ${gl.isContextLost()} · canvas ${renderer.domElement.width}x${renderer.domElement.height}\n` +
       `mode: ${LIGHT_MODE ? 'RINGAN' : 'normal'}`;
   }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /**
  * Karakter petarung CHIBI prosedural — dibangun dari bentuk dasar
@@ -101,6 +102,44 @@ export function chibiModel(p: ChibiPalette): THREE.Group {
   return g;
 }
 
+export const FIGHTER_HEIGHT = 1.8;
+
+/**
+ * Muat GLB karakter asli; normalisasi skala ke FIGHTER_HEIGHT dan
+ * pijak tanah y=0. Gagal -> chibi cadangan. Model tidak punya rig,
+ * jadi animasi tetap prosedural pada model utuh.
+ */
+export async function loadFighterModel(url: string, fallback: ChibiPalette): Promise<THREE.Object3D> {
+  try {
+    const loader = new GLTFLoader();
+    const gltf = await loader.loadAsync(url);
+    const root = gltf.scene;
+
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    const scale = size.y > 0 ? FIGHTER_HEIGHT / size.y : 1;
+    root.scale.setScalar(scale);
+    root.position.x = -center.x * scale;
+    root.position.z = -center.z * scale;
+    root.position.y = -box.min.y * scale;
+
+    const wrap = new THREE.Group();
+    wrap.add(root);
+    wrap.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) {
+        o.castShadow = true;
+      }
+    });
+    return wrap;
+  } catch (_) {
+    return chibiModel(fallback);
+  }
+}
+
 export class Fighter {
   /** Grup akar — posisinya = titik pijak di tanah. */
   group = new THREE.Group();
@@ -131,8 +170,18 @@ export class Fighter {
   private headGrp: THREE.Object3D | null = null;
 
   constructor(model: THREE.Object3D) {
-    this.inner.add(model);
     this.group.add(this.inner);
+    this.setModel(model);
+  }
+
+  /** Ganti model di dalam grup (chibi pembuka -> GLB asli saat selesai dimuat). */
+  setModel(model: THREE.Object3D): void {
+    this.inner.clear();
+    this.inner.add(model);
+    this.materials = [];
+    this.armL = null;
+    this.armR = null;
+    this.headGrp = null;
     this.inner.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (mesh.isMesh) {

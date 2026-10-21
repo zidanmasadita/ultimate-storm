@@ -1,2 +1,2 @@
-Karakter sekarang CHIBI bawaan yang dibangun di kode (src/game/character.ts) — folder ini tidak lagi dipakai saat game dimuat.
-File GLB lama tersimpan aman di histori git (commit 69a8397) dan di unggahan asli pengguna.
+player1.glb & player2.glb = karakter GLB asli pengguna (versi slim: segitiga dipangkas 4x, tekstur sama, total 6,7 MB).
+Versi asli 23,7 MB tersimpan di histori git (commit 69a8397). Game membuka instan dengan chibi, lalu GLB ditukar masuk.
