@@ -22,6 +22,8 @@ export interface SkillDef {
   buffMultiplier?: number;
   /** Khusus buff: lama buff (detik). */
   buffDuration?: number;
+  /** Khusus proyektil: jarak musuh berpindah tempat saat kena (unit). */
+  displace?: number;
 }
 
 export interface CharacterDef {
@@ -129,6 +131,30 @@ export const CHARACTERS: CharacterDef[] = [
       projectileSpeed: 0,
       buffMultiplier: 1.8, // damage x1.8 selama buff
       buffDuration: 4, // durasi singkat
+    },
+  },
+  {
+    id: 'wichy',
+    name: 'WICHY',
+    typeName: 'Penyihir',
+    epithet: 'Lingkaran Sihir Oranye',
+    chakraMax: 160, // spek sama seperti Omen
+    chakraRegen: 14,
+    moveSpeedMul: 1.15,
+    meleeDamage: 6,
+    modelUrl: 'models/wichy.glb',
+    faceUrl: 'faces/wichy.jpg',
+    palette: { outfit: 0x2c3e8f, hair: 0x2a1e24, band: 0xc0272d },
+    accent: '#ff9a3c',
+    skill: {
+      name: 'Portal',
+      kind: 'projectile',
+      chakraCost: 10,
+      damage: 6,
+      cooldown: 0.7, // cast cepat seperti Omen
+      projectileColor: 0xffa63c,
+      projectileSpeed: 21,
+      displace: 2.2, // musuh berpindah 2,2 unit searah tembakan
     },
   },
 ];

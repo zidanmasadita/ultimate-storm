@@ -185,6 +185,7 @@ interface Projectile {
   target: Fighter;
   damage: number;
   color: number;
+  displace: number;
 }
 const projectiles: Projectile[] = [];
 const projGeo = new THREE.SphereGeometry(0.22, 16, 12);
@@ -283,7 +284,7 @@ function castSkill(caster: Fighter, aimError = 0): void {
   const aim = caster.facing + aimError;
   const dir = new THREE.Vector3(Math.sin(aim), 0, Math.cos(aim));
   const foe = caster === player ? enemy : player;
-  projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target: foe, damage: sk.damage, color: sk.projectileColor });
+  projectiles.push({ mesh, vel: dir.multiplyScalar(sk.projectileSpeed), life: 2.2, owner: caster, target: foe, damage: sk.damage, color: sk.projectileColor, displace: sk.displace ?? 0 });
   effects.burst(start, sk.projectileColor, 14, 3, 0.35, 0.12);
 }
 
@@ -298,7 +299,26 @@ function updateProjectiles(dt: number): void {
     const hit = p.mesh.position.distanceTo(targetPos) < 1.05;
     if (hit || p.life <= 0) {
       effects.burst(p.mesh.position, p.color, 30, 6, 0.55, 0.16);
-      if (hit) applyHit(p.target, p.owner, p.damage, 7);
+      if (hit && p.displace > 0) {
+        // PORTAL: musuh langsung berpindah tempat searah tembakan
+        // (teleport pendek, bukan knockback), tetap di dalam ring.
+        const before = p.target.pos.clone().add(new THREE.Vector3(0, 1.1, 0));
+        const step = p.vel.clone();
+        step.y = 0;
+        step.normalize().multiplyScalar(p.displace);
+        p.target.pos.add(step);
+        const r = Math.hypot(p.target.pos.x, p.target.pos.z);
+        if (r > arena.playRadius) {
+          p.target.pos.x *= arena.playRadius / r;
+          p.target.pos.z *= arena.playRadius / r;
+        }
+        p.target.vel.multiplyScalar(0.25);
+        effects.burst(before, p.color, 22, 4, 0.4, 0.14);
+        effects.burst(p.target.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), p.color, 22, 4, 0.4, 0.14);
+        applyHit(p.target, p.owner, p.damage, 1.5);
+      } else if (hit) {
+        applyHit(p.target, p.owner, p.damage, 7);
+      }
       scene.remove(p.mesh);
       (p.mesh.material as THREE.Material).dispose();
       projectiles.splice(i, 1);
