@@ -27,13 +27,13 @@ export class NetClient {
   private pingSentAt = 0;
   private dead = false;
 
-  /** Alamat server: ?server= di URL > env VITE_WS_URL > simpanan lokal. */
+  /** Alamat server: ?server= di URL > env VITE_WS_URL > relay resmi game. */
   static serverUrl(): string {
     const q = new URLSearchParams(location.search).get('server');
     if (q) return q;
     const env = import.meta.env.VITE_WS_URL as string | undefined;
     if (env) return env;
-    return localStorage.getItem('us-ws') ?? '';
+    return 'wss://ultimate-storm-relay.masadita20.workers.dev/ws';
   }
 
   connect(mode: 'create' | 'join', code = ''): void {
