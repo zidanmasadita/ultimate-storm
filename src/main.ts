@@ -1069,6 +1069,11 @@ function tick(): void {
   ck2El.style.width = `${(enemy.chakra / enemy.chakraMax) * 100}%`;
 
   input.endFrame();
+  // Kontrol sentuh (analog + tombol skill) HANYA tampil saat
+  // pertandingan berjalan — bukan di layer pilih karakter/pengaturan.
+  if (document.body.classList.contains('in-match') !== matchStarted) {
+    document.body.classList.toggle('in-match', matchStarted);
+  }
   renderer.render(scene, camera);
   if (net && net.pingMs !== lastPingShown) {
     lastPingShown = net.pingMs;
