@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildArena } from './game/arena';
 import { Fighter, chibiModel, loadFighterModel, turnToward } from './game/character';
 import { CHARACTERS, type CharacterDef } from './game/characters';
+import { DIFFICULTIES, type DifficultyDef } from './game/difficulty';
 import { Effects } from './game/effects';
 import { ACTION_LABELS, ActionId, DEFAULT_BINDS, Input, keyLabel, saveBinds } from './game/input';
 
@@ -333,12 +334,12 @@ function tryAttack(attacker: Fighter, victim: Fighter): void {
   }, 130);
 }
 
-// ============================================================ AI musuh — mode SULIT
-// Bot aktif: mengejar, menembak skill, dash menutup jarak, menghindar
-// dari proyektil pemain, dan menyerang jarak dekat tanpa ampun.
+// ============================================================ AI musuh (level kesulitan dari difficulty.ts)
 let enemyThink = 0;
 let enemyStrafe = 1;
 let enemyMode: 'chase' | 'strafe' | 'retreat' = 'chase';
+let botDiff: DifficultyDef =
+  DIFFICULTIES.find((d) => d.id === localStorage.getItem('us-difficulty')) ?? DIFFICULTIES[2];
 
 function botDash(dir: THREE.Vector3): void {
   enemy.dashTimer = 0.18;
@@ -353,16 +354,16 @@ function updateEnemy(dt: number): void {
   toPlayer.y = 0;
   const toPlayerAng = Math.atan2(toPlayer.x, toPlayer.z);
 
-  // Selalu hadap pemain dengan putaran cepat (skill mengikuti hadap)
-  enemy.facing = turnToward(enemy.facing, toPlayerAng, dt * 10);
+  // Selalu hadap pemain (skill mengikuti hadap; kecepatan putar per level)
+  enemy.facing = turnToward(enemy.facing, toPlayerAng, dt * botDiff.turnRate);
 
   // --- Menghindar: proyektil pemain mendekat -> dash menyamping
-  if (enemy.dashCooldown <= 0) {
+  if (botDiff.dodgeRate > 0 && enemy.dashCooldown <= 0) {
     for (const p of projectiles) {
       if (p.owner !== player) continue;
       const toBot = enemy.pos.clone().sub(p.mesh.position);
       toBot.y = 0;
-      if (toBot.length() < 5.2 && Math.random() < dt * 7) {
+      if (toBot.length() < 5.2 && Math.random() < dt * botDiff.dodgeRate) {
         const pv = p.vel.clone();
         pv.y = 0;
         pv.normalize();
@@ -372,54 +373,58 @@ function updateEnemy(dt: number): void {
     }
   }
 
-  // --- Keputusan berkala (cepat, seperti refleks pemain bagus)
+  // --- Keputusan berkala (kecepatannya diatur level kesulitan)
   enemyThink -= dt;
   if (enemyThink <= 0) {
-    enemyThink = 0.2 + Math.random() * 0.15;
+    enemyThink = botDiff.thinkMin + Math.random() * (botDiff.thinkMax - botDiff.thinkMin);
     if (Math.random() < 0.3) enemyStrafe = -enemyStrafe;
     if (enemy.hp <= 30 && Math.random() < 0.35) enemyMode = 'retreat';
     else if (dist <= 3.4 && Math.random() < 0.45) enemyMode = 'strafe';
     else enemyMode = 'chase';
 
     // Dash menutup jarak dari menengah
-    if (dist > 4.5 && dist < 10.5 && enemy.dashCooldown <= 0 && Math.random() < 0.7) {
+    if (botDiff.dashChance > 0 && dist > 4.5 && dist < 10.5 && enemy.dashCooldown <= 0 && Math.random() < botDiff.dashChance) {
       botDash(toPlayer);
     }
-    // Tembak skill bila siap & tidak sedang dash (jitter bidik kecil)
+    // Tembak skill bila siap & tidak sedang dash (jitter bidik per level)
     if (
       enemy.dashTimer <= 0 &&
       enemy.skillCooldown <= 0 &&
       enemy.chakra >= enemy.skill.chakraCost &&
       dist < 15 &&
-      Math.random() < 0.85
+      Math.random() < botDiff.skillChance
     ) {
-      castSkill(enemy, (Math.random() - 0.5) * 0.1);
+      castSkill(enemy, (Math.random() * 2 - 1) * botDiff.aimError);
     }
     // Kadang lompat menghindari serangan putar pemain
-    if (player.attackTimer > 0 && dist < 3.2 && enemy.grounded && Math.random() < 0.4) {
+    if (player.attackTimer > 0 && dist < 3.2 && enemy.grounded && Math.random() < botDiff.jumpChance) {
       enemy.vy = 9.2;
       enemy.grounded = false;
     }
   }
 
-  // --- Gerakan sesuai mode (kecepatan setara pemain)
+  // --- Gerakan sesuai mode (kecepatan diskalakan per level)
   const desired = new THREE.Vector3();
   if (enemy.dashTimer <= 0) {
     if (enemyMode === 'chase') {
-      if (dist > 2.1) desired.copy(toPlayer.clone().normalize().multiplyScalar(WALK_SPEED));
+      if (dist > 2.1) desired.copy(toPlayer.clone().normalize().multiplyScalar(WALK_SPEED * botDiff.speedMul));
     } else if (enemyMode === 'strafe') {
-      const tangent = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize().multiplyScalar(enemyStrafe * 5);
+      const tangent = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize().multiplyScalar(enemyStrafe * 5 * botDiff.speedMul);
       const inward = toPlayer.clone().normalize().multiplyScalar(dist > 3.4 ? 2 : -1);
       desired.copy(tangent).add(inward);
     } else {
-      desired.copy(toPlayer.clone().normalize().multiplyScalar(-WALK_SPEED));
+      desired.copy(toPlayer.clone().normalize().multiplyScalar(-WALK_SPEED * botDiff.speedMul));
     }
     steer(enemy, desired, dt);
   }
 
-  // --- Serangan jarak dekat: setiap cooldown selesai, langsung pukul
-  if (dist < 2.5 && enemy.attackCooldown <= 0) {
-    tryAttack(enemy, player);
+  // --- Serangan jarak dekat (level rendah ragu-ragu, tinggi langsung)
+  if (dist < 2.5) {
+    if (botDiff.meleeInstant) {
+      if (enemy.attackCooldown <= 0) tryAttack(enemy, player);
+    } else if (Math.random() < dt * botDiff.meleeRate) {
+      tryAttack(enemy, player);
+    }
   }
 }
 
@@ -593,6 +598,24 @@ function buildCharCards(): void {
   }
 }
 buildCharCards();
+
+function buildDiffChips(): void {
+  const row = $('diff-row');
+  row.innerHTML = '';
+  for (const d of DIFFICULTIES) {
+    const chip = document.createElement('button');
+    chip.className = 'diff-chip' + (d.id === botDiff.id ? ' sel' : '');
+    chip.style.setProperty('--c', d.color);
+    chip.innerHTML = `<span>${d.name}</span>`;
+    chip.addEventListener('click', () => {
+      botDiff = d;
+      localStorage.setItem('us-difficulty', d.id);
+      buildDiffChips();
+    });
+    row.appendChild(chip);
+  }
+}
+buildDiffChips();
 $('char-select').classList.add('open');
 $('btn-chars').addEventListener('click', () => {
   matchStarted = false;
@@ -659,7 +682,7 @@ function tick(): void {
     const gl = renderer.getContext();
     debugEl.textContent =
       `draw ${lastCalls} · tri ${(lastTris / 1000).toFixed(0)}k · frame ${frameCount}\n` +
-      `model dimuat: ${modelCache.size}/${CHARACTERS.length} · P1 ${player.charId || '-'} · P2 ${enemy.charId || '-'}\n` +
+      `model dimuat: ${modelCache.size}/${CHARACTERS.length} · P1 ${player.charId || '-'} · P2 ${enemy.charId || '-'} · bot ${botDiff.name}\n` +
       `ctx lost: ${gl.isContextLost()} · canvas ${renderer.domElement.width}x${renderer.domElement.height}\n` +
       `mode: ${LIGHT_MODE ? 'RINGAN' : 'normal'}`;
   }

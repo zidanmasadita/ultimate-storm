@@ -43,6 +43,12 @@
       .cs-title { font-size: 30px; font-weight: 900; font-style: italic; letter-spacing: 2px; color: #ffd34d; text-shadow: 0 3px 0 #b3541e, 0 8px 24px rgba(0,0,0,.7); }
       .cs-sub { color: #b9c3e6; font-size: 14px; margin: 6px 0 20px; }
       #char-cards { display: flex; gap: 26px; margin-top: 24px; justify-content: center; flex-wrap: wrap; }
+      .cs-diff-label { margin-top: 20px; color: #8fa0cc; font-size: 12px; font-weight: 700; letter-spacing: 3px; }
+      #diff-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 9px; }
+      .diff-chip { transform: skewX(-12deg); background: rgba(13,18,38,.85); border: 2px solid var(--c); color: #eef2ff; border-radius: 6px; padding: 7px 15px; cursor: pointer; font-family: inherit; transition: transform .1s, background .1s; }
+      .diff-chip span { display: inline-block; transform: skewX(12deg); font-weight: 900; font-style: italic; font-size: 13px; letter-spacing: 1px; }
+      .diff-chip:hover { transform: skewX(-12deg) translateY(-2px); }
+      .diff-chip.sel { background: var(--c); color: #131a30; }
       .char-card { --accent: #fff; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 4px; background: none; border: 0; color: #eef2ff; cursor: pointer; font-family: inherit; transition: transform .12s; }
       .char-card:hover, .char-card:active { transform: translateY(-4px) scale(1.03); }
       /* Jajar genjang berisi muka karakter; lapisan luar = bingkai aksen */
@@ -128,10 +134,12 @@
     <div id="char-select">
       <div class="cs-panel">
         <div class="cs-title">PILIH KARAKTERMU</div>
+        <div class="cs-diff-label">LEVEL BOT</div>
+        <div id="diff-row"></div>
         <div id="char-cards"></div>
       </div>
     </div>
-    <div id="buildtag" style="position:fixed;right:8px;top:44px;z-index:60;color:#ffd76a;font:11px ui-monospace,monospace;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px">build char-2</div>
+    <div id="buildtag" style="position:fixed;right:8px;top:44px;z-index:60;color:#ffd76a;font:11px ui-monospace,monospace;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px">build char-3</div>
     <div id="diagpanel" style="position:fixed;left:8px;top:120px;z-index:60;color:#9fe870;font:11px/1.55 ui-monospace,monospace;background:rgba(0,0,0,.78);padding:7px 9px;border-radius:6px;white-space:pre">memeriksa...</div>
     <script>
       // Panel diagnostik INDEPENDEN (bukan bagian modul game): tetap bersuara
@@ -154,7 +162,7 @@
         setInterval(function () {
           var canvas = document.querySelector('#app canvas');
           var lines = [];
-          lines.push('build char-2 · panel mandiri');
+          lines.push('build char-3 · panel mandiri');
           lines.push('canvas: ' + (canvas ? 'ada ' + canvas.width + 'x' + canvas.height : 'TIDAK ADA'));
           lines.push('game booted: ' + (window.__gameBooted ? 'YA' : 'belum'));
           lines.push(glInfo);
@@ -165,7 +173,7 @@
           if (!window.__gameBooted) {
             var el = document.getElementById('fatal');
             el.style.display = 'block';
-            el.textContent = 'Game tidak mulai dalam 7 detik (build char-2). Modul JS gagal jalan di browser ini.';
+            el.textContent = 'Game tidak mulai dalam 7 detik (build char-3). Modul JS gagal jalan di browser ini.';
           }
         }, 7000);
       })();
