@@ -262,6 +262,15 @@ function castSkill(caster: Fighter, aimError = 0): void {
   caster.chakra -= sk.chakraCost;
   caster.skillCooldown = sk.cooldown;
 
+  // Skill BUFF: perkuat damage diri sendiri sementara (tanpa proyektil)
+  if (sk.kind === 'buff') {
+    caster.buffTimer = sk.buffDuration ?? 4;
+    caster.buffMul = sk.buffMultiplier ?? 1.5;
+    const c = caster.pos.clone().add(new THREE.Vector3(0, 1.0, 0));
+    effects.burst(c, sk.projectileColor, 30, 4.5, 0.5, 0.16);
+    return;
+  }
+
   const mat = new THREE.MeshBasicMaterial({ color: sk.projectileColor });
   const mesh = new THREE.Mesh(projGeo, mat);
   const start = caster.pos.clone().add(new THREE.Vector3(0, 1.35, 0));
@@ -301,6 +310,8 @@ function updateProjectiles(dt: number): void {
 let shake = 0;
 
 function applyHit(victim: Fighter, attacker: Fighter, damage: number, knock: number): void {
+  // Buff penguatan memperbesar semua damage penyerang selama aktif
+  if (attacker.buffTimer > 0) damage *= attacker.buffMul;
   victim.hp = Math.max(0, victim.hp - damage);
   victim.hitTimer = 0.22;
   const away = victim.pos.clone().sub(attacker.pos);
@@ -330,7 +341,7 @@ function tryAttack(attacker: Fighter, victim: Fighter): void {
   // Putaran serangan mengenai musuh di dekatnya
   setTimeout(() => {
     const d = attacker.pos.distanceTo(victim.pos);
-    if (d < 2.5) applyHit(victim, attacker, 6, 5);
+    if (d < 2.5) applyHit(victim, attacker, attacker.meleeDamage, 5);
   }, 130);
 }
 
@@ -391,7 +402,7 @@ function updateEnemy(dt: number): void {
       enemy.dashTimer <= 0 &&
       enemy.skillCooldown <= 0 &&
       enemy.chakra >= enemy.skill.chakraCost &&
-      dist < 15 &&
+      (enemy.skill.kind === 'buff' ? dist < 9 : dist < 15) &&
       Math.random() < botDiff.skillChance
     ) {
       castSkill(enemy, (Math.random() * 2 - 1) * botDiff.aimError);
@@ -469,6 +480,7 @@ function integrate(f: Fighter, dt: number): void {
   f.dashTimer = Math.max(0, f.dashTimer - dt);
   f.dashCooldown = Math.max(0, f.dashCooldown - dt);
   f.skillCooldown = Math.max(0, f.skillCooldown - dt);
+  f.buffTimer = Math.max(0, f.buffTimer - dt);
   f.hitTimer = Math.max(0, f.hitTimer - dt);
   f.chakra = Math.min(f.chakraMax, f.chakra + f.chakraRegen * dt);
 
@@ -564,6 +576,7 @@ function applyCharacter(f: Fighter, c: CharacterDef): void {
   f.chakraMax = c.chakraMax;
   f.chakraRegen = c.chakraRegen;
   f.moveSpeedMul = c.moveSpeedMul;
+  f.meleeDamage = c.meleeDamage;
   const m = modelCache.get(c.id);
   if (m) f.setModel(m);
   else f.setModel(chibiModel(c.palette));

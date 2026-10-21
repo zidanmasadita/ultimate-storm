@@ -159,6 +159,10 @@ export class Fighter {
   chakraMax = 100;
   chakraRegen = 7;
   moveSpeedMul = 1;
+  meleeDamage = 6;
+  /** Sisa waktu buff penguatan (detik) & pengali damagenya. */
+  buffTimer = 0;
+  buffMul = 1;
   /** Skill karakter yang sedang dimainkan (diatur layer pilih karakter). */
   skill: SkillDef = DEFAULT_SKILL;
   /** Id karakter roster yang sedang dimainkan ('' sebelum memilih). */
@@ -253,10 +257,17 @@ export class Fighter {
       inner.rotation.y = 0;
     }
 
-    // Berkedip merah saat terkena serangan
+    // Berkedip merah saat kena; berpijar oranye berdenyut saat buff aktif
     const flash = this.hitTimer > 0 ? 0.85 : 0;
     for (const m of this.materials) {
-      m.emissive.setRGB(flash, flash * 0.12, flash * 0.08);
+      if (flash > 0) {
+        m.emissive.setRGB(flash, flash * 0.12, flash * 0.08);
+      } else if (this.buffTimer > 0) {
+        const p = 0.5 + Math.sin(t * 10) * 0.18;
+        m.emissive.setRGB(p, p * 0.3, p * 0.05);
+      } else {
+        m.emissive.setRGB(0, 0, 0);
+      }
     }
 
     // Hadap
@@ -273,6 +284,8 @@ export class Fighter {
     this.chakra = this.chakraMax;
     this.attackTimer = 0;
     this.hitTimer = 0;
+    this.buffTimer = 0;
+    this.buffMul = 1;
   }
 }
 

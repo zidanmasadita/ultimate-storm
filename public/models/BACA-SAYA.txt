@@ -1,2 +1,3 @@
-player1.glb & player2.glb = karakter GLB asli pengguna (versi slim: segitiga dipangkas 4x, tekstur sama, total 6,7 MB).
-Versi asli 23,7 MB tersimpan di histori git (commit 69a8397). Game membuka instan dengan chibi, lalu GLB ditukar masuk.
+player1.glb (Omen) & player2.glb (Koboi): versi slim pengguna (tekstur identik, segitiga dipangkas 4x).
+ryu.glb: GLB asli pengguna 13,25 MB di-slim-kan Eve dgn gltf-transform (weld+simplify 0.28) -> 7,39 MB, 74rb segitiga, tekstur utuh. Asli tersimpan di unggahan user.
+Semua model dimuat di latar; game membuka instan dgn chibi lalu menukar model sesuai pilihan karakter.
