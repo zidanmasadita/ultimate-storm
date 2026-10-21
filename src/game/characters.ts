@@ -157,4 +157,29 @@ export const CHARACTERS: CharacterDef[] = [
       displace: 2.2, // musuh berpindah 2,2 unit searah tembakan
     },
   },
+  {
+    id: 'ronin',
+    name: 'RONIN',
+    typeName: 'Fighter',
+    epithet: 'Samurai Bertopi Lebar',
+    chakraMax: 100, // spek sama seperti Ryu...
+    chakraRegen: 7,
+    moveSpeedMul: 0.92, // ...kecuali sedikit lebih cepat dari Ryu (0.85)
+    meleeDamage: 11, // ...dan damage sedikit lebih kecil dari Ryu (13)
+    modelUrl: 'models/ronin.glb',
+    faceUrl: 'faces/ronin.jpg',
+    palette: { outfit: 0x2c2c34, hair: 0xe8e8ec, band: 0xc0272d },
+    accent: '#d8b25c',
+    skill: {
+      name: 'Penguatan',
+      kind: 'buff',
+      chakraCost: 30,
+      damage: 0,
+      cooldown: 12,
+      projectileColor: 0xff6a3c,
+      projectileSpeed: 0,
+      buffMultiplier: 1.8,
+      buffDuration: 4,
+    },
+  },
 ];
