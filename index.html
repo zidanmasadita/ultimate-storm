@@ -105,7 +105,7 @@
   <body>
     <div id="app"></div>
     <div id="fatal"></div>
-    <div id="buildtag" style="position:fixed;right:8px;top:44px;z-index:60;color:#ffd76a;font:11px ui-monospace,monospace;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px">build diag-5</div>
+    <div id="buildtag" style="position:fixed;right:8px;top:44px;z-index:60;color:#ffd76a;font:11px ui-monospace,monospace;background:rgba(0,0,0,.6);padding:3px 7px;border-radius:5px">build chibi-1</div>
     <div id="diagpanel" style="position:fixed;left:8px;top:120px;z-index:60;color:#9fe870;font:11px/1.55 ui-monospace,monospace;background:rgba(0,0,0,.78);padding:7px 9px;border-radius:6px;white-space:pre">memeriksa...</div>
     <script>
       // Panel diagnostik INDEPENDEN (bukan bagian modul game): tetap bersuara
@@ -128,7 +128,7 @@
         setInterval(function () {
           var canvas = document.querySelector('#app canvas');
           var lines = [];
-          lines.push('build diag-5 · panel mandiri');
+          lines.push('build chibi-1 · panel mandiri');
           lines.push('canvas: ' + (canvas ? 'ada ' + canvas.width + 'x' + canvas.height : 'TIDAK ADA'));
           lines.push('game booted: ' + (window.__gameBooted ? 'YA' : 'belum'));
           lines.push(glInfo);
@@ -139,7 +139,7 @@
           if (!window.__gameBooted) {
             var el = document.getElementById('fatal');
             el.style.display = 'block';
-            el.textContent = 'Game tidak mulai dalam 7 detik (build diag-5). Modul JS gagal jalan di browser ini.';
+            el.textContent = 'Game tidak mulai dalam 7 detik (build chibi-1). Modul JS gagal jalan di browser ini.';
           }
         }, 7000);
       })();

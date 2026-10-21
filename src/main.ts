@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildArena } from './game/arena';
-import { Fighter, loadFighterModel, placeholderModel, turnToward } from './game/character';
+import { Fighter, chibiModel, turnToward } from './game/character';
 import { Effects } from './game/effects';
 import { ACTION_LABELS, ActionId, DEFAULT_BINDS, Input, keyLabel, saveBinds } from './game/input';
 
@@ -42,7 +42,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = !LIGHT_MODE;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = LIGHT_MODE ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.15;
 app.appendChild(renderer.domElement);
 // Konteks WebGL hilang (GPU kehabisan memori) harus bersuara, bukan diam.
 renderer.domElement.addEventListener('webglcontextlost', (e) => {
@@ -65,17 +65,13 @@ const input = new Input();
 const SPAWN_1 = new THREE.Vector3(-6, arena.ringTopY, 0);
 const SPAWN_2 = new THREE.Vector3(6, arena.ringTopY, 0);
 
-// Game langsung mulai dengan placeholder; GLB asli ditukar masuk begitu
-// selesai dimuat (kegagalan/lambat memuat model TIDAK boleh menghitamkan layar).
-const player = new Fighter(placeholderModel(0x2f80ed));
-const enemy = new Fighter(placeholderModel(0xed4b2f));
+// Karakter CHIBI bawaan — dibangun prosedural di kode, tanpa file model:
+// muat awal ringan dan langsung bisa dimainkan di semua perangkat.
+const player = new Fighter(chibiModel({ outfit: 0x2f6fd6, hair: 0x23202e, band: 0x2440a0 }));
+const enemy = new Fighter(chibiModel({ outfit: 0xd64a2f, hair: 0x3a2318, band: 0xa02418 }));
 player.reset(SPAWN_1, Math.PI / 2);
 enemy.reset(SPAWN_2, -Math.PI / 2);
 scene.add(player.group, enemy.group);
-let playerModelLoaded = false;
-let enemyModelLoaded = false;
-loadFighterModel('models/player1.glb', 0x2f80ed).then((m) => { player.setModel(m); playerModelLoaded = true; });
-loadFighterModel('models/player2.glb', 0xed4b2f).then((m) => { enemy.setModel(m); enemyModelLoaded = true; });
 
 // ============================================================ HUD & panel
 const $ = (id: string) => document.getElementById(id)!;
@@ -521,7 +517,7 @@ function tick(): void {
     const gl = renderer.getContext();
     debugEl.textContent =
       `draw ${lastCalls} · tri ${(lastTris / 1000).toFixed(0)}k · frame ${frameCount}\n` +
-      `model P1 ${playerModelLoaded ? 'GLB' : '...'} · P2 ${enemyModelLoaded ? 'GLB' : '...'}\n` +
+      `karakter: chibi bawaan (tanpa unduh model)\n` +
       `ctx lost: ${gl.isContextLost()} · canvas ${renderer.domElement.width}x${renderer.domElement.height}\n` +
       `mode: ${LIGHT_MODE ? 'RINGAN' : 'normal'}`;
   }

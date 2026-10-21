@@ -15,7 +15,7 @@ export interface ArenaInfo {
 
 function floorTexture(): THREE.Texture {
   const c = document.createElement('canvas');
-  c.width = c.height = 1024;
+  c.width = c.height = 512;
   const g = c.getContext('2d')!;
 
   // Dasar batu
@@ -186,8 +186,8 @@ export function buildArena(scene: THREE.Scene, opts?: { shadowMapSize?: number }
     emissiveIntensity: 0.55,
     map: winTex,
   });
-  for (let i = 0; i < 30; i++) {
-    const a = (i / 30) * Math.PI * 2 + Math.random() * 0.14;
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + Math.random() * 0.14;
     const dist = 44 + Math.random() * 34;
     const w = 6 + Math.random() * 7;
     const h = 8 + Math.random() * 20;
@@ -200,8 +200,8 @@ export function buildArena(scene: THREE.Scene, opts?: { shadowMapSize?: number }
 
   // Puncak gunung jauh
   const mMat = new THREE.MeshStandardMaterial({ color: 0x1a1626, roughness: 1 });
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * Math.PI * 2 + 0.4;
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.4;
     const dist = 130 + Math.random() * 40;
     const h = 26 + Math.random() * 22;
     const cone = new THREE.Mesh(new THREE.ConeGeometry(h * 0.9, h, 5), mMat);

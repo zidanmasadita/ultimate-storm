@@ -1,8 +1,2 @@
-Taruh file model karakter hasil generate di folder ini dengan nama persis:
-
-  player1.glb  -> karakter pemain 1
-  player2.glb  -> karakter pemain 2 (musuh)
-
-Kalau file belum ada, game memakai karakter placeholder (kapsul)
-supaya environment tetap bisa dicoba. Ukuran model otomatis
-dinormalisasi ke tinggi 1,8 m di dalam game.
+Karakter sekarang CHIBI bawaan yang dibangun di kode (src/game/character.ts) — folder ini tidak lagi dipakai saat game dimuat.
+File GLB lama tersimpan aman di histori git (commit 69a8397) dan di unggahan asli pengguna.
