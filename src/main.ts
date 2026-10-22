@@ -1862,6 +1862,9 @@ function tick(): void {
   const dt = Math.min(clock.getDelta(), 0.05);
   perfTime += dt;
 
+  // Awan langit prosedural bergeser sangat pelan (offset tekstur saja)
+  arena.skyTexture.offset.x = (perfTime * 0.0022) % 1;
+
   if (netRole === 'guest') {
     // TAMU: tanpa simulasi lokal — kirim input, gambar dari snapshot host.
     if (matchStarted) {
